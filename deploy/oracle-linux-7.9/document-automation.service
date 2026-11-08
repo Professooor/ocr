@@ -1,0 +1,37 @@
+# systemd unit for Document Automation on Oracle Linux 7.9 (systemd 219).
+#
+# Install:
+#   sudo cp deploy/oracle-linux-7.9/document-automation.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now document-automation
+#
+# The application reads its settings from /opt/document-automation/.env.
+# It runs as ONE process on purpose: the OCR worker, the OCR model and the
+# metadata lock live in that process (see README, "Process model").
+
+[Unit]
+Description=Document Automation (FastAPI + PaddleOCR)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=docauto
+Group=docauto
+WorkingDirectory=/opt/document-automation
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/opt/document-automation
+ExecStart=/opt/document-automation/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65536
+
+# Hardening options available in systemd 219
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

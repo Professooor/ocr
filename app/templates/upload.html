@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Document{% endblock %}
+{% block page_name %}upload{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ root_path }}/static/css/upload.css?v={{ app_version }}">
+{% endblock %}
+
+{% block content %}
+<section class="page-header">
+    <div>
+        <p class="eyebrow"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-upload"></use></svg>Document intake</p>
+        <h1 class="page-title">Upload a document</h1>
+        <p class="page-subtitle">
+            Drop a PDF or an image. Every PDF page is converted to an image automatically
+            and read with PaddleOCR, then you can review the text page by page.
+        </p>
+    </div>
+</section>
+
+<div class="upload-layout">
+    <!-- Left: file selection and settings -->
+    <section class="card upload-card" aria-labelledby="upload-card-title">
+        <div class="card__header">
+            <h2 class="card__title" id="upload-card-title">
+                <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>Select document
+            </h2>
+            <span class="text-muted upload-card__limit">One file at a time &middot; any size</span>
+        </div>
+
+        <form id="upload-form" class="card__body upload-form" novalidate
+              data-allowed-extensions="{{ allowed_extensions | join(',') }}">
+
+            <!-- Drop zone. The real file input stays focusable for keyboard users. -->
+            <div class="dropzone" id="dropzone">
+                <input class="dropzone__input" type="file" id="document-file" name="file"
+                       accept="{{ allowed_extensions | join(',') }}" aria-describedby="dropzone-hint">
+                <label class="dropzone__label" for="document-file">
+                    <span class="dropzone__icon" aria-hidden="true">
+                        <svg class="icon"><use href="#i-upload"></use></svg>
+                    </span>
+                    <span class="dropzone__title">Drag and drop your document here</span>
+                    <span class="dropzone__text">or <span class="dropzone__browse">browse your files</span></span>
+                    <span class="dropzone__hint" id="dropzone-hint">
+                        {{ allowed_extensions | map('replace', '.', '') | map('upper') | join(' · ') }}
+                    </span>
+                </label>
+            </div>
+
+            <!-- Selected file -->
+            <div class="file-preview" id="file-preview" hidden>
+                <span class="file-preview__icon" id="file-preview-icon" aria-hidden="true"></span>
+                <div class="file-preview__body">
+                    <p class="file-preview__name" id="file-name"></p>
+                    <p class="file-preview__meta" id="file-meta"></p>
+                </div>
+                <button type="button" class="button button--ghost button--icon" id="file-clear"
+                        aria-label="Remove selected file" title="Remove selected file">
+                    <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+                </button>
+            </div>
+
+            <!-- DPI -->
+            <div class="dpi-field" id="dpi-field">
+                <div class="dpi-field__header">
+                    <label class="form-label dpi-field__label" for="pdf-dpi">
+                        <svg class="icon" aria-hidden="true"><use href="#i-sliders"></use></svg>PDF conversion DPI
+                    </label>
+                    <div class="dpi-field__value">
+                        <input class="form-input dpi-field__number" type="number" id="pdf-dpi" name="dpi"
+                               min="{{ dpi_min }}" max="{{ dpi_max }}" step="1" value="{{ dpi_default }}"
+                               inputmode="numeric" required aria-describedby="dpi-hint">
+                        <span class="dpi-field__unit">DPI</span>
+                    </div>
+                </div>
+                <input class="range" type="range" id="pdf-dpi-range"
+                       min="{{ dpi_min }}" max="{{ dpi_max }}" step="1" value="{{ dpi_default }}"
+                       aria-label="PDF conversion DPI slider">
+                <div class="range-scale" aria-hidden="true">
+                    <span>{{ dpi_min }}</span>
+                    <span>{{ dpi_max }}</span>
+                </div>
+                <p class="form-hint" id="dpi-hint"
+                   data-default-text="Whole number from {{ dpi_min }} to {{ dpi_max }} (default {{ dpi_default }}). Higher DPI gives sharper page images but takes longer.">
+                    Whole number from {{ dpi_min }} to {{ dpi_max }} (default {{ dpi_default }}).
+                    Higher DPI gives sharper page images but takes longer.
+                </p>
+                <p class="dpi-field__estimate" id="dpi-estimate" aria-live="polite"></p>
+            </div>
+
+            <div id="upload-message" class="alert" role="alert" hidden></div>
+
+            <button type="submit" class="button button--primary button--lg button--block" id="upload-button">
+                <svg class="icon" aria-hidden="true"><use href="#i-scan"></use></svg>
+                <span id="upload-button-text">Upload and process</span>
+            </button>
+        </form>
+    </section>
+
+    <!-- Right: processing timeline and result -->
+    <section class="card progress-card" id="processing-panel" aria-labelledby="processing-title" aria-live="polite">
+        <div class="card__header">
+            <h2 class="card__title" id="processing-title">
+                <svg class="icon" aria-hidden="true"><use href="#i-layers"></use></svg>Processing
+            </h2>
+            <span id="processing-status"></span>
+        </div>
+
+        <div class="card__body">
+            <ol class="timeline">
+                <li class="timeline__item" data-step="upload">
+                    <span class="timeline__marker" data-icon="upload"></span>
+                    <div class="timeline__content">
+                        <p class="timeline__title">Upload and validation</p>
+                        <p class="timeline__text" data-step-text>File type, content and size are checked.</p>
+                        <div class="progress timeline__progress" id="upload-progress" hidden>
+                            <div class="progress__bar" id="upload-progress-bar"></div>
+                        </div>
+                    </div>
+                </li>
+                <li class="timeline__item" data-step="convert">
+                    <span class="timeline__marker" data-icon="layers"></span>
+                    <div class="timeline__content">
+                        <p class="timeline__title">Page conversion</p>
+                        <p class="timeline__text" data-step-text>Every PDF page becomes an image at the selected DPI.</p>
+                    </div>
+                </li>
+                <li class="timeline__item" data-step="ocr">
+                    <span class="timeline__marker" data-icon="scan"></span>
+                    <div class="timeline__content">
+                        <p class="timeline__title">OCR</p>
+                        <p class="timeline__text" data-step-text id="ocr-progress-text">PaddleOCR reads the text on each page.</p>
+                        <div class="progress timeline__progress" id="ocr-progress" hidden>
+                            <div class="progress__bar" id="ocr-progress-bar"></div>
+                        </div>
+                    </div>
+                </li>
+                <li class="timeline__item" data-step="review">
+                    <span class="timeline__marker" data-icon="eye"></span>
+                    <div class="timeline__content">
+                        <p class="timeline__title">Review</p>
+                        <p class="timeline__text" data-step-text>Compare each page with its recognised text.</p>
+                    </div>
+                </li>
+            </ol>
+
+            <div id="processing-message" class="alert" role="alert" hidden></div>
+
+            <div class="result" id="document-summary" hidden>
+                <dl class="result__grid">
+                    <div class="result__item result__item--wide"><dt>File</dt><dd data-field="original_filename"></dd></div>
+                    <div class="result__item"><dt>Pages</dt><dd data-field="page_count"></dd></div>
+                    <div class="result__item"><dt>DPI</dt><dd data-field="dpi"></dd></div>
+                    <div class="result__item"><dt>Total time</dt><dd data-field="elapsed"></dd></div>
+                    <div class="result__item result__item--wide"><dt>Document ID</dt><dd data-field="document_id" class="text-mono"></dd></div>
+                </dl>
+                <div class="page-strip" id="page-strip" aria-label="Page images"></div>
+            </div>
+
+            <a class="button button--primary button--lg button--block" id="review-link" href="#" hidden>
+                <span>Open Document Review</span>
+                <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
+            </a>
+            <button type="button" class="button button--lg button--block upload-export" id="export-excel-button" hidden>
+                <svg class="icon" aria-hidden="true"><use href="#i-sheet"></use></svg>
+                <span id="export-excel-label">Export to Excel</span>
+            </button>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{{ root_path }}/static/js/upload.js?v={{ app_version }}"></script>
+{% endblock %}

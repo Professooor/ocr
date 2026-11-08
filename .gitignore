@@ -1,0 +1,25 @@
+# Local configuration (contains credentials)
+.env
+
+# Runtime data created by the application
+storage/
+logs/
+
+# OCR models (recreate with: python scripts/prepare_ocr_models.py)
+models/
+
+# Offline wheelhouse built for Oracle Linux 7.9
+wheelhouse-ol7/
+
+# Python
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

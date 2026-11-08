@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+
+{% block title %}Invoice Review{% endblock %}
+{% block page_name %}review{% endblock %}
+{% block body_class %}{% if document_id %}is-workspace{% endif %}{% endblock %}
+
+{% block page_css %}
+<link rel="stylesheet" href="{{ root_path }}/static/css/review.css?v={{ app_version }}">
+{% endblock %}
+
+{# One text or date field of the invoice form. #}
+{% macro field(key, label, kind, required=False) %}
+<div class="field" data-key="{{ key }}" data-kind="{{ kind }}">
+    <label class="field__label" for="f-{{ key }}">{{ label }}{% if required %}<span class="field__required" aria-hidden="true"> *</span>{% endif %}</label>
+    <div class="input-wrap">
+        <input class="form-input" id="f-{{ key }}" name="{{ key }}" type="{{ 'date' if kind == 'date' else 'text' }}"
+               autocomplete="off" spellcheck="false"{% if required %} aria-required="true"{% endif %}>
+        {% if kind != 'date' %}
+        <button type="button" class="input-wrap__clear" aria-label="Clear {{ label }}" tabindex="-1" hidden>
+            <svg class="icon icon--sm" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+        {% endif %}
+    </div>
+    <p class="field__note" data-note></p>
+</div>
+{% endmacro %}
+
+{# One money field with the currency shown in front of the amount. #}
+{% macro money_field(key, label, required=False) %}
+<div class="field" data-key="{{ key }}" data-kind="amount">
+    <label class="field__label" for="f-{{ key }}">{{ label }}{% if required %}<span class="field__required" aria-hidden="true"> *</span>{% endif %}</label>
+    <div class="input-wrap input-wrap--money">
+        <span class="input-wrap__prefix" data-currency-prefix>USD</span>
+        <input class="form-input" id="f-{{ key }}" name="{{ key }}" type="text" inputmode="decimal"
+               autocomplete="off" spellcheck="false"{% if required %} aria-required="true"{% endif %}>
+        <button type="button" class="input-wrap__clear" aria-label="Clear {{ label }}" tabindex="-1" hidden>
+            <svg class="icon icon--sm" aria-hidden="true"><use href="#i-x"></use></svg>
+        </button>
+    </div>
+    <p class="field__note" data-note></p>
+</div>
+{% endmacro %}
+
+{% block content %}
+<div id="review-root" data-document-id="{{ document_id }}">
+
+    <!-- ================= Document list (no document selected) ================= -->
+    <section id="document-list-section" hidden>
+        <div class="page-header">
+            <div>
+                <p class="eyebrow"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-eye"></use></svg>Invoice review</p>
+                <h1 class="page-title">Processed documents</h1>
+                <p class="page-subtitle">Open a document to check the data read from the invoice and correct anything OCR got wrong.</p>
+            </div>
+            <a class="button button--primary" href="{{ root_path }}/">
+                <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg>Upload document
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="list-toolbar">
+                <label class="search-field">
+                    <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
+                    <span class="visually-hidden">Search documents</span>
+                    <input class="search-field__input" type="search" id="document-search"
+                           placeholder="Search by file name or document ID" autocomplete="off">
+                </label>
+                <span class="list-toolbar__count text-muted" id="document-count"></span>
+            </div>
+
+            <div id="document-list-message" class="alert list-message" role="alert" hidden></div>
+
+            <div class="table-wrapper">
+                <table class="doc-table" id="document-table" aria-busy="true">
+                    <thead>
+                        <tr>
+                            <th scope="col">Document</th>
+                            <th scope="col">Uploaded</th>
+                            <th scope="col" class="doc-table__num">Pages</th>
+                            <th scope="col">OCR</th>
+                            <th scope="col">Review</th>
+                            <th scope="col"><span class="visually-hidden">Open</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="document-table-body"></tbody>
+                </table>
+            </div>
+
+            <div class="empty-state" id="document-empty" hidden>
+                <span class="empty-state__icon"><svg class="icon" aria-hidden="true"><use href="#i-inbox"></use></svg></span>
+                <p class="empty-state__title" id="document-empty-title">No documents yet</p>
+                <p id="document-empty-text">Upload a PDF or image to see it here.</p>
+                <a class="button button--primary" href="{{ root_path }}/" id="document-empty-action">
+                    <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg>Upload document
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================= Invoice review workspace ================= -->
+    <section class="workspace" id="document-review-section" hidden>
+        <div class="workspace__split" id="workspace">
+
+            <!-- Left: the invoice pages -->
+            <section class="viewer-pane" aria-label="Invoice pages">
+                <div class="viewer-pane__toolbar">
+                    <a class="button button--ghost button--icon" href="{{ root_path }}/review"
+                       aria-label="Back to all documents" title="All documents">
+                        <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>
+                    </a>
+                    <div class="viewer-pane__title">
+                        <span class="file-badge" id="review-file-icon" aria-hidden="true"></span>
+                        <div class="viewer-pane__text">
+                            <p class="viewer-pane__name" id="review-filename"><span class="skeleton skeleton--title"></span></p>
+                            <p class="viewer-pane__meta text-muted" id="review-meta"></p>
+                        </div>
+                    </div>
+                    <div class="pager">
+                        <button type="button" class="button button--ghost button--icon" id="prev-page"
+                                aria-label="Previous page" title="Previous page (Left arrow)">
+                            <svg class="icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+                        </button>
+                        <span class="pager__label" id="page-title">Page</span>
+                        <button type="button" class="button button--ghost button--icon" id="next-page"
+                                aria-label="Next page" title="Next page (Right arrow)">
+                            <svg class="icon" aria-hidden="true"><use href="#i-chevron-right"></use></svg>
+                        </button>
+                    </div>
+                    <div class="viewer__tools">
+                        <label class="switch" title="Show the text OCR recognised on the page">
+                            <input type="checkbox" class="switch__input" id="overlay-toggle" checked>
+                            <span class="switch__track" aria-hidden="true"></span>
+                            <span class="switch__label">Text boxes</span>
+                        </label>
+                        <div class="zoom" role="group" aria-label="Zoom">
+                            <button type="button" class="zoom__button" id="zoom-out" aria-label="Zoom out" title="Zoom out (-)">
+                                <svg class="icon" aria-hidden="true"><use href="#i-zoom-out"></use></svg>
+                            </button>
+                            <button type="button" class="zoom__button zoom__label" id="zoom-fit" title="Fit to width (0)">Fit</button>
+                            <button type="button" class="zoom__button" id="zoom-in" aria-label="Zoom in" title="Zoom in (+)">
+                                <svg class="icon" aria-hidden="true"><use href="#i-zoom-in"></use></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="viewer-pane__body">
+                    <nav class="thumbs" aria-label="Pages">
+                        <ol class="thumb-list" id="page-list"></ol>
+                    </nav>
+                    <div class="viewer__canvas" id="viewer-canvas">
+                        <div class="viewer__page" id="viewer-page">
+                            <img id="page-image" alt="">
+                            <svg class="ocr-overlay" id="ocr-overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" aria-hidden="true"></svg>
+                        </div>
+                        <div class="viewer__loading" id="page-loading" hidden><span class="spinner"></span></div>
+                        <p class="viewer__message" id="page-image-message" hidden></p>
+                    </div>
+                </div>
+
+                <div class="viewer-pane__hint" id="viewer-hint" aria-live="polite"></div>
+            </section>
+
+            <!-- Draggable divider -->
+            <div class="splitter" id="splitter" role="separator" aria-orientation="vertical"
+                 aria-label="Resize the invoice and the form" tabindex="0"></div>
+
+            <!-- Right: the data read from the invoice -->
+            <aside class="form-pane" aria-label="Invoice data">
+                <header class="form-pane__header">
+                    <div class="form-pane__title">
+                        <h1 class="form-pane__heading">Invoice Review</h1>
+                        <span id="invoice-status"></span>
+                    </div>
+                    <div class="form-pane__actions">
+                        <button type="button" class="button button--sm" id="export-excel-button" hidden
+                                title="Download the invoice data and OCR text as an Excel workbook">
+                            <svg class="icon" aria-hidden="true"><use href="#i-sheet"></use></svg><span id="export-excel-label">Export to Excel</span>
+                        </button>
+                        <a class="button button--ghost button--icon" id="close-review" href="{{ root_path }}/review"
+                           aria-label="Close and go back to all documents" title="Close">
+                            <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
+                        </a>
+                    </div>
+                </header>
+
+                <div class="form-pane__tabs">
+                    <div class="tabs" role="tablist" aria-label="Review sections">
+                        <button type="button" class="tabs__tab" role="tab" id="tab-details"
+                                aria-selected="true" aria-controls="panel-details">
+                            <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>Invoice details
+                        </button>
+                        <button type="button" class="tabs__tab" role="tab" id="tab-ocr"
+                                aria-selected="false" aria-controls="panel-ocr" tabindex="-1">
+                            <svg class="icon" aria-hidden="true"><use href="#i-scan"></use></svg>OCR text
+                        </button>
+                    </div>
+                    <button type="button" class="button button--ghost button--sm" id="reextract-button" hidden
+                            title="Discard the current values and read them from the invoice again">
+                        <svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>Re-read invoice
+                    </button>
+                </div>
+
+                <div class="form-pane__scroll" id="form-scroll">
+                    <div id="review-message" class="alert review-message" role="alert" hidden></div>
+
+                    <!-- OCR not finished banner -->
+                    <div class="ocr-banner" id="ocr-banner" hidden>
+                        <p class="ocr-banner__text" id="ocr-banner-text"></p>
+                        <button type="button" class="button button--primary button--sm" id="run-ocr-button" hidden>
+                            <svg class="icon" aria-hidden="true"><use href="#i-play"></use></svg><span id="run-ocr-label">Run OCR</span>
+                        </button>
+                    </div>
+
+                    <div id="panel-details" role="tabpanel" aria-labelledby="tab-details">
+                        <form id="invoice-form" class="invoice-form" novalidate autocomplete="off">
+                            <div class="form-grid">
+                                {{ field("vendor_name", "Vendor Name", "text", True) }}
+                                {{ field("invoice_date", "Invoice Date", "date", True) }}
+                                {{ field("invoice_number", "Invoice Number", "code", True) }}
+                                {{ field("due_date", "Due Date", "date", True) }}
+                                {{ field("po_number", "PO Number", "code") }}
+                                <div class="field" data-key="currency" data-kind="select">
+                                    <label class="field__label" for="f-currency">Currency</label>
+                                    <select class="form-input" id="f-currency" name="currency">
+                                        <option value="">Not set</option>
+                                        {% for code in ["USD", "EUR", "GBP", "PKR", "AED", "SAR", "INR", "CAD", "AUD", "JPY", "CNY", "CHF"] %}
+                                        <option value="{{ code }}">{{ code }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <p class="field__note" data-note></p>
+                                </div>
+                            </div>
+
+                            <div class="form-grid form-grid--three">
+                                {{ money_field("subtotal", "Subtotal") }}
+                                {{ money_field("tax", "Tax") }}
+                                {{ money_field("total_due", "Total Due", True) }}
+                            </div>
+                        </form>
+
+                        <!-- Line items -->
+                        <section class="line-items" aria-labelledby="line-items-title">
+                            <div class="line-items__header">
+                                <h2 class="line-items__title" id="line-items-title">Line items</h2>
+                                <span class="line-items__count text-muted" id="line-items-count"></span>
+                            </div>
+                            <div class="line-items__table-wrap">
+                                <table class="line-table" id="line-table">
+                                    <thead>
+                                        <tr>
+                                            <th scope="col" class="line-table__check">
+                                                <input type="checkbox" id="line-select-all" aria-label="Select all line items">
+                                            </th>
+                                            <th scope="col" data-col="description">Description</th>
+                                            <th scope="col" data-col="quantity" class="line-table__num">Quantity</th>
+                                            <th scope="col" data-col="rate" class="line-table__num">Rate</th>
+                                            <th scope="col" data-col="amount" class="line-table__num">Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="line-body"></tbody>
+                                </table>
+                                <p class="line-items__empty text-muted" id="line-empty" hidden>
+                                    No line items were found. Use “Line item” to add one.
+                                </p>
+                            </div>
+                            <div class="line-items__actions">
+                                <button type="button" class="button button--ghost button--sm" id="add-line">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>Line item
+                                </button>
+                                <button type="button" class="button button--ghost button--sm" id="delete-lines" disabled>
+                                    <svg class="icon" aria-hidden="true"><use href="#i-trash"></use></svg>Line item
+                                </button>
+                                <div class="column-menu">
+                                    <button type="button" class="button button--sm" id="edit-columns"
+                                            aria-haspopup="true" aria-expanded="false">
+                                        <svg class="icon" aria-hidden="true"><use href="#i-columns"></use></svg>Edit Columns
+                                    </button>
+                                    <div class="column-menu__popover" id="column-menu" role="group" aria-label="Visible columns" hidden>
+                                        <label class="check"><input type="checkbox" checked disabled><span>Description</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="quantity" checked><span>Quantity</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="rate" checked><span>Rate</span></label>
+                                        <label class="check"><input type="checkbox" checked disabled><span>Amount</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    <!-- OCR text -->
+                    <div id="panel-ocr" role="tabpanel" aria-labelledby="tab-ocr" hidden>
+                        <div class="ocr-head">
+                            <span id="ocr-status-badge"></span>
+                            <button type="button" class="button button--ghost button--sm" id="copy-text" hidden title="Copy the text of this page">
+                                <svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>Copy page text
+                            </button>
+                        </div>
+                        <div class="ocr-stats" id="ocr-details" hidden>
+                            <div class="ocr-stat">
+                                <span class="ocr-stat__label">Lines</span>
+                                <span class="ocr-stat__value" data-field="line_count"></span>
+                            </div>
+                            <div class="ocr-stat">
+                                <span class="ocr-stat__label">Avg. confidence</span>
+                                <span class="ocr-stat__value" data-field="average_confidence"></span>
+                                <span class="meter" aria-hidden="true"><span class="meter__bar" id="confidence-meter"></span></span>
+                            </div>
+                            <div class="ocr-stat">
+                                <span class="ocr-stat__label">Time</span>
+                                <span class="ocr-stat__value" data-field="duration_seconds"></span>
+                            </div>
+                        </div>
+                        <div class="ocr-message" id="ocr-message" hidden></div>
+                        <ol class="ocr-lines" id="ocr-lines"></ol>
+                    </div>
+                </div>
+
+                <footer class="form-pane__footer" id="form-footer">
+                    <span class="form-pane__save-state text-muted" id="save-state" aria-live="polite"></span>
+                    <div class="form-pane__buttons">
+                        <button type="button" class="button" id="save-draft">Save as draft</button>
+                        <button type="button" class="button button--primary" id="save-changes">Save changes</button>
+                    </div>
+                </footer>
+            </aside>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block page_js %}
+<script src="{{ root_path }}/static/js/review.js?v={{ app_version }}"></script>
+{% endblock %}

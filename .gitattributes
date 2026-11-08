@@ -1,0 +1,8 @@
+# Store and check out text files with LF so deploy scripts run on Oracle Linux.
+* text=auto eol=lf
+*.ps1 text eol=crlf
+
+*.onnx binary
+*.png binary
+*.jpg binary
+*.pdf binary

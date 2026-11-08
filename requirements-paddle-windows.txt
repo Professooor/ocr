@@ -1,0 +1,14 @@
+# OPTIONAL - Windows 11 only.
+#
+# Adds PaddlePaddle so OCR_ENGINE=paddle can be used for comparison on the
+# development machine. It is NOT needed for the default OCR_ENGINE=onnxruntime.
+#
+# Do NOT install this on Oracle Linux 7.9: every PaddlePaddle 3.x Linux wheel
+# (3.0.0 - 3.3.1) needs glibc 2.27+ and GLIBCXX_3.4.22, while Oracle Linux 7.9
+# provides glibc 2.17 and GLIBCXX_3.4.19. See README.md, section
+# "PaddleOCR compatibility on Oracle Linux 7.9".
+#
+# With PaddlePaddle 3.3.x on CPU, keep OCR_ENABLE_MKLDNN=false (oneDNN raises
+# "ConvertPirAttribute2RuntimeAttribute not support" otherwise).
+-r requirements.txt
+paddlepaddle==3.3.1
