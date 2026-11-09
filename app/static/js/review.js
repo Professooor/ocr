@@ -27,21 +27,82 @@
         CAD: "$", AUD: "$", JPY: "¥", CNY: "¥", CHF: "CHF"
     };
 
-    /* Fields of the invoice form. kind: text | code | date | amount | select */
+    /* Fields of the invoice form. kind: text | code | date | amount | quantity | percent | select */
     var FIELDS = {
-        vendor_name: { kind: "text", label: "Vendor Name", required: true },
+        vendor_name: { kind: "text", label: "Supplier Name", required: true },
+        supplier_ntn: { kind: "code", label: "Supplier NTN", required: false },
+        supplier_strn: { kind: "code", label: "Supplier STRN", required: false },
+        supplier_address: { kind: "text", label: "Supplier Address", required: false },
+        buyer_name: { kind: "text", label: "Buyer Name", required: false },
+        buyer_ntn: { kind: "code", label: "Buyer NTN", required: false },
+        buyer_strn: { kind: "code", label: "Buyer STRN", required: false },
+        buyer_address: { kind: "text", label: "Buyer Address", required: false },
         invoice_number: { kind: "code", label: "Invoice Number", required: true },
         invoice_date: { kind: "date", label: "Invoice Date", required: true },
         due_date: { kind: "date", label: "Due Date", required: true },
+        fbr_invoice_number: { kind: "code", label: "FBR Invoice Number", required: false },
         po_number: { kind: "code", label: "PO Number", required: false },
+        dc_number: { kind: "code", label: "DC Number", required: false },
+        gate_pass_number: { kind: "code", label: "Gate Pass Number", required: false },
+        contract_number: { kind: "code", label: "Contract Number", required: false },
         currency: { kind: "select", label: "Currency", required: false },
-        subtotal: { kind: "amount", label: "Subtotal", required: false },
-        tax: { kind: "amount", label: "Tax", required: false },
-        total_due: { kind: "amount", label: "Total Due", required: true }
+        subtotal: { kind: "amount", label: "Value excl. Tax", required: false },
+        discount: { kind: "amount", label: "Discount", required: false },
+        sales_tax_rate: { kind: "percent", label: "Sales Tax %", required: false },
+        tax: { kind: "amount", label: "Sales Tax", required: false },
+        further_tax: { kind: "amount", label: "Further Tax", required: false },
+        total_due: { kind: "amount", label: "Total incl. Tax", required: true },
+        total_quantity: { kind: "quantity", label: "Total Quantity", required: false },
+        amount_in_words: { kind: "text", label: "Amount in Words", required: false }
     };
     var FIELD_KEYS = Object.keys(FIELDS);
-    var COLUMN_KINDS = { description: "text", quantity: "quantity", rate: "amount", amount: "amount" };
-    var COLUMN_LABELS = { description: "Description", quantity: "Quantity", rate: "Rate", amount: "Amount" };
+
+    /* Columns of the line items table. kind is used when text clicked on the invoice fills a cell.
+       toggle: can be hidden with "Edit Columns"; visible: shown until the user changes it. */
+    var LINE_COLUMNS = [
+        { key: "description", label: "Description", kind: "text" },
+        { key: "hs_code", label: "HS Code", kind: "code", toggle: true, visible: true },
+        { key: "uom", label: "UOM", kind: "text", toggle: true, visible: true },
+        { key: "quantity", label: "Quantity", kind: "quantity", number: true, toggle: true, visible: true },
+        { key: "rate", label: "Rate", kind: "amount", number: true, money: true, toggle: true, visible: true },
+        { key: "amount", label: "Value excl. Tax", kind: "amount", number: true, money: true },
+        { key: "tax_rate", label: "Tax %", kind: "percent", number: true, toggle: true, visible: true },
+        { key: "sales_tax", label: "Sales Tax", kind: "amount", number: true, money: true, toggle: true, visible: true },
+        { key: "further_tax", label: "Further Tax", kind: "amount", number: true, money: true, toggle: true, visible: false },
+        { key: "discount", label: "Discount", kind: "amount", number: true, money: true, toggle: true, visible: false },
+        { key: "amount_incl_tax", label: "Value incl. Tax", kind: "amount", number: true, money: true, toggle: true, visible: true }
+    ];
+    var COLUMNS = {};
+    LINE_COLUMNS.forEach(function (column) { COLUMNS[column.key] = column; });
+    var COLUMN_KINDS = {};
+    var COLUMN_LABELS = {};
+    LINE_COLUMNS.forEach(function (column) {
+        COLUMN_KINDS[column.key] = column.kind;
+        COLUMN_LABELS[column.key] = column.label;
+    });
+
+    /** True when the line item column holds money (shown with thousands separators). */
+    function isMoneyColumn(key) {
+        return Boolean(COLUMNS[key] && COLUMNS[key].money);
+    }
+
+    /** Which optional columns are visible before the user changes anything. */
+    function defaultColumns() {
+        var columns = {};
+        LINE_COLUMNS.forEach(function (column) {
+            if (column.toggle) {
+                columns[column.key] = column.visible;
+            }
+        });
+        return columns;
+    }
+
+    /** An empty line item with every column. */
+    function emptyLine() {
+        var item = { confidence: null, selected: false };
+        LINE_COLUMNS.forEach(function (column) { item[column.key] = ""; });
+        return item;
+    }
 
     var root = document.getElementById("review-root");
     var documentId = root.getAttribute("data-document-id");
@@ -83,8 +144,6 @@
 
     /* Workspace: right pane */
     var invoiceStatus = document.getElementById("invoice-status");
-    var exportButton = document.getElementById("export-excel-button");
-    var exportLabel = document.getElementById("export-excel-label");
     var tabDetails = document.getElementById("tab-details");
     var tabOcr = document.getElementById("tab-ocr");
     var panelDetails = document.getElementById("panel-details");
@@ -109,6 +168,17 @@
     var saveState = document.getElementById("save-state");
     var saveDraftButton = document.getElementById("save-draft");
     var saveChangesButton = document.getElementById("save-changes");
+    var postButton = document.getElementById("post-invoice");
+    var docBar = document.getElementById("doc-bar");
+    var docBarCounts = document.getElementById("doc-bar-counts");
+    var postAllButton = document.getElementById("post-all");
+    var postAllLabel = document.getElementById("post-all-label");
+    var panelDetails = document.getElementById("panel-details");
+    var invoiceBar = document.getElementById("invoice-bar");
+    var invoiceBarTitle = document.getElementById("invoice-bar-title");
+    var invoiceBarPages = document.getElementById("invoice-bar-pages");
+    var splitInvoiceButton = document.getElementById("split-invoice");
+    var joinInvoiceButton = document.getElementById("join-invoice");
 
     /* OCR text tab */
     var ocrStatusBadge = document.getElementById("ocr-status-badge");
@@ -123,11 +193,13 @@
         documents: [],
         document: null,
         pages: [],
-        data: null,           // invoice data from the API
+        data: null,           // invoice data from the API (the invoice of the open page)
         lines: [],            // line items being edited
         dirty: false,
         currentPage: null,
         pageRequestId: 0,
+        invoiceRequestId: 0,
+        switching: false,     // saving a draft before showing another invoice
         polling: false,
         result: null,         // OCR result of the current page
         zoomMode: "fit",
@@ -138,7 +210,7 @@
         activeInput: null,
         activeSource: null,   // { page, line } of the selected field
         sources: {},          // key -> { page, line }
-        columns: { quantity: true, rate: true },
+        columns: defaultColumns(),
         saving: false
     };
 
@@ -146,26 +218,32 @@
        Small helpers
        ===================================================================== */
 
+    /** Keep a number between a minimum and a maximum. */
     function clamp(value, minimum, maximum) {
         return Math.min(maximum, Math.max(minimum, value));
     }
 
+    /** URL of a document API endpoint, for example documentApi("/pages"). */
     function documentApi(path) {
         return "/api/review/documents/" + encodeURIComponent(documentId) + (path || "");
     }
 
+    /** URL of the invoice data API endpoint of the current document. */
     function invoiceApi(path) {
         return "/api/documents/" + encodeURIComponent(documentId) + "/invoice-data" + (path || "");
     }
 
+    /** Read a value from the browser storage. */
     function storageGet(key) {
         try { return window.localStorage.getItem(key); } catch (error) { return null; }
     }
 
+    /** Save a value in the browser storage. */
     function storageSet(key, value) {
         try { window.localStorage.setItem(key, value); } catch (error) { /* Storage is optional. */ }
     }
 
+    /** Create the small file badge used in the document list. */
     function fileBadge(kind) {
         var badge = App.el("span", "file-badge" + (kind === "pdf" ? " is-pdf" : ""));
         badge.appendChild(App.icon(kind === "pdf" ? "file" : "image"));
@@ -240,6 +318,7 @@
         return (negative ? "-" : "") + whole + (pieces[1] ? "." + pieces[1] : "");
     }
 
+    /** Format an ISO date for the field notes. */
     function formatDateForNote(iso) {
         var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
         if (!match) {
@@ -253,6 +332,7 @@
        Document list
        ===================================================================== */
 
+    /** Show placeholder rows while the list loads. */
     function renderListSkeleton() {
         documentTableBody.textContent = "";
         for (var row = 0; row < 4; row += 1) {
@@ -268,6 +348,7 @@
         }
     }
 
+    /** Load all documents from the server and show the list. */
     async function loadDocumentList() {
         listSection.hidden = false;
         renderListSkeleton();
@@ -284,14 +365,17 @@
         renderDocumentList();
     }
 
+    /** True when the document matches the search text. */
     function matchesSearch(item, query) {
         if (!query) {
             return true;
         }
         return String(item.original_filename || "").toLowerCase().indexOf(query) !== -1 ||
+            String(item.reference_number || "").toLowerCase().indexOf(query) !== -1 ||
             item.document_id.indexOf(query) !== -1;
     }
 
+    /** Draw the document list, filtered by the search text. */
     function renderDocumentList() {
         var query = searchInput.value.trim().toLowerCase();
         var visible = state.documents.filter(function (item) { return matchesSearch(item, query); });
@@ -320,6 +404,45 @@
         }
     }
 
+    /** Ask, then delete a whole document (original file, page images, OCR results and saved data). */
+    async function deleteDocument(documentId, button) {
+        var item = state.documents.filter(function (doc) { return doc.document_id === documentId; })[0];
+        if (!item) {
+            return;
+        }
+        var name = item.original_filename + (item.reference_number ? " (" + item.reference_number + ")" : "");
+        if (!window.confirm("Delete " + name + "?\n\nThe uploaded file, page images, OCR text and all saved or draft data " +
+                "will be removed. This cannot be undone.")) {
+            return;
+        }
+        button.disabled = true;
+        App.clearMessage(listMessage);
+        var path = "/api/documents/" + encodeURIComponent(documentId);
+        try {
+            try {
+                await App.apiRequest(path, { method: "DELETE", headers: { Accept: "application/json" } });
+            } catch (error) {
+                if (error.code !== "DOCUMENT_HAS_POSTED") {
+                    throw error;
+                }
+                if (!window.confirm(error.message + "\n\nDelete the document anyway?")) {
+                    button.disabled = false;
+                    return;
+                }
+                await App.apiRequest(path + "?confirm=true", { method: "DELETE", headers: { Accept: "application/json" } });
+            }
+        } catch (error) {
+            button.disabled = false;
+            App.showMessage(listMessage, "error", error.message);
+            App.toast({ type: "error", title: "Not deleted", message: error.message });
+            return;
+        }
+        state.documents = state.documents.filter(function (doc) { return doc.document_id !== documentId; });
+        renderDocumentList();
+        App.toast({ type: "success", title: "Document deleted", message: name, timeout: 3000 });
+    }
+
+    /** Create one row of the document list. */
     function createDocumentRow(item, index) {
         var href = App.url("/review/" + encodeURIComponent(item.document_id));
         var row = App.el("tr", "doc-row");
@@ -335,7 +458,9 @@
         link.href = href;
         link.title = item.original_filename;
         textWrap.appendChild(link);
-        textWrap.appendChild(App.el("span", "doc-row__id", item.document_id.slice(0, 12) + "…"));
+        var reference = App.el("span", "doc-row__id", item.reference_number || item.document_id.slice(0, 12) + "…");
+        reference.title = "Document ID: " + item.document_id;
+        textWrap.appendChild(reference);
         fileWrap.appendChild(textWrap);
         fileCell.appendChild(fileWrap);
 
@@ -347,11 +472,26 @@
         var reviewCell = App.el("td");
         if (item.data_status) {
             reviewCell.appendChild(App.createStatusBadge(item.data_status));
+            var counts = item.data_counts;
+            if (counts && counts.invoices > 1) {
+                var countText = App.el("span", "text-muted", " " + counts.saved + " / " + counts.invoices + " saved");
+                countText.title = counts.invoices + " invoices: " + counts.saved + " saved, " + counts.draft + " draft";
+                reviewCell.appendChild(countText);
+            }
         } else {
             reviewCell.appendChild(App.el("span", "text-muted", DASH));
         }
         var arrowCell = App.el("td");
-        arrowCell.appendChild(App.icon("chevron-right", "doc-row__chevron"));
+        var actions = App.el("div", "doc-row__actions");
+        arrowCell.appendChild(actions);
+        var deleteButton = App.el("button", "doc-row__delete");
+        deleteButton.type = "button";
+        deleteButton.setAttribute("data-delete-id", item.document_id);
+        deleteButton.setAttribute("aria-label", "Delete " + item.original_filename);
+        deleteButton.title = "Delete document";
+        deleteButton.appendChild(App.icon("trash"));
+        actions.appendChild(deleteButton);
+        actions.appendChild(App.icon("chevron-right", "doc-row__chevron"));
 
         [fileCell, dateCell, pagesCell, ocrCell, reviewCell, arrowCell].forEach(function (cell) {
             row.appendChild(cell);
@@ -363,6 +503,7 @@
        Workspace: loading
        ===================================================================== */
 
+    /** Load the open document (pages and OCR status) and its invoice data. */
     async function loadDocument() {
         reviewSection.hidden = false;
         restoreLayout();
@@ -376,18 +517,18 @@
             return;
         }
         applyDocument(data);
-        exportButton.hidden = false;
         if (state.pages.length) {
             selectPage(Math.min(pageFromHash() || 1, state.pages.length));
         } else {
             App.showMessage(reviewMessage, "warning", "This document has no page images.");
         }
-        await loadInvoiceData();
+        await loadInvoiceData(state.currentPage);
         if (ACTIVE_OCR_STATUSES.indexOf(state.document.ocr.status) !== -1) {
             startPolling();
         }
     }
 
+    /** Lock the form (used when there is no OCR text to edit yet). */
     function disableForm() {
         saveDraftButton.disabled = true;
         saveChangesButton.disabled = true;
@@ -395,6 +536,7 @@
         invoiceForm.querySelectorAll("input, select").forEach(function (input) { input.disabled = true; });
     }
 
+    /** Show the loaded document: file name and details in the header, and the page thumbnails. */
     function applyDocument(data) {
         state.document = data.document;
         state.pages = data.pages;
@@ -406,18 +548,148 @@
         reviewFileIcon.className = "file-badge" + (pdf ? " is-pdf" : "");
         reviewFileIcon.textContent = "";
         reviewFileIcon.appendChild(App.icon(pdf ? "file" : "image"));
-        reviewMeta.textContent = String(doc.file_type || "").toUpperCase() + " · " + doc.page_count +
+        reviewMeta.textContent = (doc.reference_number ? doc.reference_number + " · " : "") +
+            String(doc.file_type || "").toUpperCase() + " · " + doc.page_count +
             (doc.page_count === 1 ? " page" : " pages") + " · " +
             (doc.conversion.dpi ? doc.conversion.dpi + " DPI" : "original resolution");
         renderThumbnails();
         updateOcrBanner();
     }
 
-    async function loadInvoiceData() {
+    /** Show or hide the "reading invoice" animation on the invoice bar and the form. */
+    function setInvoiceLoading(loading) {
+        invoiceForm.classList.toggle("is-loading", loading);
+        invoiceBar.classList.toggle("is-loading", loading);
+        invoiceForm.setAttribute("aria-busy", loading ? "true" : "false");
+        syncFormWithPage();
+    }
+
+    /**
+     * The form may only show the invoice of the open page. While it holds another
+     * invoice (loading, or loading failed) it is locked and cannot be saved.
+     */
+    function syncFormWithPage() {
+        var mismatch = Boolean(state.currentPage && state.data && !invoiceContains(state.currentPage));
+        invoiceForm.classList.toggle("is-stale", mismatch && !invoiceForm.classList.contains("is-loading"));
+        updateInvoiceBar();
+    }
+
+    /** After saving or re-reading: if the open page belongs to another invoice, load that one. */
+    function ensureInvoiceMatchesPage() {
+        if (state.currentPage && state.data && !invoiceContains(state.currentPage)) {
+            loadInvoiceData(state.currentPage);
+        }
+    }
+
+    /** Load the invoice that contains the page into the form. Older answers are ignored. */
+    async function loadInvoiceData(pageNumber) {
+        var requestId = ++state.invoiceRequestId;
+        var query = pageNumber ? "?page=" + encodeURIComponent(pageNumber) : "";
+        setInvoiceLoading(true);
         try {
-            applyInvoiceData(await App.apiRequest(invoiceApi()));
+            var data = await App.apiRequest(invoiceApi(query));
+            if (requestId === state.invoiceRequestId) {
+                applyInvoiceData(data);
+            }
+        } catch (error) {
+            if (requestId === state.invoiceRequestId) {
+                App.showMessage(reviewMessage, "error", error.message);
+            }
+        } finally {
+            if (requestId === state.invoiceRequestId) {
+                setInvoiceLoading(false);
+            }
+        }
+    }
+
+    /** True when the page belongs to the invoice shown in the form. */
+    function invoiceContains(pageNumber) {
+        var invoice = state.data && state.data.invoice;
+        return Boolean(invoice && invoice.pages && invoice.pages.indexOf(pageNumber) !== -1);
+    }
+
+    /**
+     * Open a page. When it belongs to another invoice, unsaved changes are saved as a
+     * draft first and the form then shows that invoice.
+     */
+    async function goToPage(pageNumber) {
+        if (!state.pages[pageNumber - 1] || state.switching) {
+            return;
+        }
+        var otherInvoice = !invoiceContains(pageNumber);
+        if (otherInvoice && state.dirty) {
+            state.switching = true;
+            var saved = await save("draft", true);
+            state.switching = false;
+            if (!saved) {
+                return; // Stay on the invoice so the user can fix the values.
+            }
+        }
+        selectPage(pageNumber);
+        if (otherInvoice) {
+            await loadInvoiceData(pageNumber);
+        }
+    }
+
+    /** Update the bar that shows which invoice is open and how many there are. */
+    function updateInvoiceBar() {
+        var invoice = state.data && state.data.invoice;
+        if (!invoice || !invoice.pages || !invoice.pages.length || !state.currentPage) {
+            invoiceBar.hidden = true;
+            return;
+        }
+        if (!invoiceContains(state.currentPage)) {
+            // The form still holds another invoice: do not show its number for this page.
+            invoiceBarTitle.textContent = invoiceForm.classList.contains("is-loading")
+                ? "Reading invoice…" : "Invoice not loaded";
+            invoiceBarPages.textContent = "Page " + state.currentPage;
+            splitInvoiceButton.hidden = true;
+            joinInvoiceButton.hidden = true;
+            invoiceBar.hidden = state.pages.length <= 1;
+            return;
+        }
+        var pages = invoice.pages;
+        var first = pages[0];
+        var last = pages[pages.length - 1];
+        invoiceBarTitle.textContent = "Invoice " + invoice.index + " of " + invoice.count;
+        invoiceBarPages.textContent = pages.length === 1 ? "Page " + first : "Pages " + first + "–" + last;
+        splitInvoiceButton.hidden = state.currentPage === first;
+        joinInvoiceButton.hidden = !(state.currentPage === first && first > 1);
+        // A one-page document needs no invoice bar.
+        invoiceBar.hidden = state.pages.length <= 1;
+    }
+
+    /** Correct where an invoice starts: startsInvoice true = new invoice on the open page. */
+    async function setPageBreak(startsInvoice) {
+        var pageNumber = state.currentPage;
+        if (startsInvoice && state.dirty && !(await save("draft", true))) {
+            return;
+        }
+        if (!startsInvoice && (state.dirty || (state.data && state.data.status !== "needs_review")) &&
+            !window.confirm("Join this page with the previous invoice? The values entered for this invoice will be discarded.")) {
+            return;
+        }
+        splitInvoiceButton.disabled = true;
+        joinInvoiceButton.disabled = true;
+        try {
+            var data = await App.apiRequest(invoiceApi("/page-break"), {
+                method: "POST",
+                headers: { Accept: "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify({ page: pageNumber, starts_invoice: startsInvoice })
+            });
+            state.invoiceRequestId++;
+            applyInvoiceData(data);
+            App.toast({
+                type: "success",
+                title: startsInvoice ? "New invoice from page " + pageNumber : "Page " + pageNumber + " joined",
+                message: "Invoice " + data.invoice.index + " of " + data.invoice.count,
+                timeout: 3000
+            });
         } catch (error) {
             App.showMessage(reviewMessage, "error", error.message);
+        } finally {
+            splitInvoiceButton.disabled = false;
+            joinInvoiceButton.disabled = false;
         }
     }
 
@@ -425,6 +697,7 @@
        Invoice form
        ===================================================================== */
 
+    /** Connect the form fields to their change and focus handlers. */
     function bindFields() {
         FIELD_KEYS.forEach(function (key) {
             var wrap = invoiceForm.querySelector('[data-key="' + key + '"]');
@@ -438,6 +711,7 @@
         });
     }
 
+    /** Select the currency in the form. */
     function setCurrency(code) {
         var select = fields.currency.input;
         code = code || "";
@@ -457,6 +731,7 @@
         });
     }
 
+    /** Put a value into one form field. */
     function setFieldValue(key, value) {
         var field = fields[key];
         value = value === null || value === undefined ? "" : String(value);
@@ -481,9 +756,17 @@
             }
             return { value: number, error: null };
         }
+        if (field.def.kind === "quantity" || field.def.kind === "percent") {
+            var plain = parseNumber(text.replace("%", ""), false);
+            if (plain === null) {
+                return { value: text, error: field.def.label + " must be a number." };
+            }
+            return { value: plain, error: null };
+        }
         return { value: text, error: null };
     }
 
+    /** Update the clear button of one field. */
     function updateClearButton(key) {
         var field = fields[key];
         if (field.clear) {
@@ -532,15 +815,18 @@
         field.note.textContent = text;
     }
 
+    /** Refresh the small note under every field (source line, confidence). */
     function updateAllNotes() {
         FIELD_KEYS.forEach(updateNote);
     }
 
+    /** Remove the error message of one field. */
     function clearFieldError(key) {
         fields[key].wrap.classList.remove("has-error");
         fields[key].input.removeAttribute("aria-invalid");
     }
 
+    /** Show an error message under one field. */
     function setFieldError(key, message) {
         var field = fields[key];
         field.wrap.classList.add("has-error");
@@ -549,9 +835,11 @@
         field.note.textContent = message;
     }
 
+    /** Remember whether there are unsaved changes and update the save buttons. */
     function setDirty(dirty) {
         state.dirty = dirty;
         saveState.classList.toggle("is-dirty", dirty);
+        updatePostButton();
         if (dirty) {
             saveState.textContent = "Unsaved changes";
         } else if (state.data && state.data.saved_at) {
@@ -562,6 +850,7 @@
         }
     }
 
+    /** Fill the form and the line items table with the invoice data from the server. */
     function applyInvoiceData(data) {
         clearActiveInput();
         state.data = data;
@@ -581,14 +870,12 @@
             }
         });
         state.lines = data.line_items.map(function (item) {
-            return {
-                description: item.description || "",
-                quantity: item.quantity || "",
-                rate: item.rate || "",
-                amount: item.amount || "",
-                confidence: item.confidence === undefined ? null : item.confidence,
-                selected: false
-            };
+            var line = emptyLine();
+            LINE_COLUMNS.forEach(function (column) {
+                line[column.key] = item[column.key] || "";
+            });
+            line.confidence = item.confidence === undefined ? null : item.confidence;
+            return line;
         });
         renderLines();
         updateAllNotes();
@@ -597,27 +884,220 @@
         reextractButton.hidden = !data.ocr_ready;
         setDirty(false);
         updateOcrBanner();
+        applyPostingState();
+        updateDocBar();
+        syncFormWithPage();
+        updateThumbnailStates();
+    }
+
+    /* =====================================================================
+       Posting to the database
+       ===================================================================== */
+
+    /** True when the open invoice was posted to the database (read-only). */
+    function isPosted() {
+        return Boolean(state.data && state.data.status === "posted");
+    }
+
+    /** Show the "Post to database" button only when the database is set up; enable it for saved invoices. */
+    function updatePostButton() {
+        var posting = state.data && state.data.posting;
+        postButton.hidden = !posting || !posting.enabled || isPosted();
+        postButton.disabled = !state.data || state.data.status !== "saved" || state.dirty || state.posting;
+        postButton.title = state.dirty ? "Save your changes first."
+            : state.data && state.data.status !== "saved" ? "Use Save changes first. Only saved invoices can be posted."
+            : "Send this saved invoice to the database. It cannot be changed afterwards.";
+    }
+
+    /** Lock the form of a posted invoice and show where it went. */
+    function applyPostingState() {
+        var posted = isPosted();
+        var posting = (state.data && state.data.posting) || {};
+        panelDetails.classList.toggle("is-posted", posted);
+        panelDetails.querySelectorAll("input, select, textarea").forEach(function (input) {
+            if (input.closest(".column-menu")) {
+                return;
+            }
+            input.readOnly = posted;
+            if (input.type === "checkbox" || input.tagName === "SELECT") {
+                input.disabled = posted;
+            }
+        });
+        addLineButton.disabled = posted;
+        saveDraftButton.hidden = posted;
+        saveChangesButton.hidden = posted;
+        reextractButton.hidden = posted || !(state.data && state.data.ocr_ready);
+        if (posted) {
+            clearActiveInput();
+            saveState.textContent = "Posted to database" +
+                (posting.staging_id ? " · ID " + posting.staging_id : "") +
+                (posting.posted_at ? " · " + App.formatRelativeTime(posting.posted_at) : "");
+        } else if (posting.last_error && state.data.status === "saved" && !state.dirty) {
+            saveState.textContent = "Last post failed: " + posting.last_error;
+        }
+        updatePostButton();
+    }
+
+    /** First pages of the invoices that are saved but not posted yet. */
+    function savedInvoicePages() {
+        var invoice = (state.data && state.data.invoice) || {};
+        var firstPages = invoice.first_pages || [];
+        var statuses = invoice.statuses || [];
+        return firstPages.filter(function (page, index) { return statuses[index] === "saved"; });
+    }
+
+    /** Document line under the file name: invoice counts and the "Post all saved" button. */
+    function updateDocBar() {
+        var summary = state.data && state.data.summary;
+        if (!summary || !summary.invoices) {
+            docBar.hidden = true;
+            return;
+        }
+        var posted = summary.posted || 0;
+        var parts = [
+            summary.invoices + (summary.invoices === 1 ? " invoice" : " invoices"),
+            summary.saved + " saved",
+            posted + " posted"
+        ];
+        if (summary.draft) {
+            parts.splice(2, 0, summary.draft + " draft");
+        }
+        docBarCounts.textContent = parts.join(" · ");
+        docBar.hidden = false;
+        if (state.postingAll) {
+            return; // The label shows the progress.
+        }
+        var waiting = savedInvoicePages().length;
+        var posting = state.data.posting || {};
+        postAllButton.hidden = !posting.enabled || waiting === 0;
+        postAllButton.disabled = state.posting;
+        postAllLabel.textContent = "Post all saved (" + waiting + ")";
+    }
+
+    /** Post every saved invoice of the document, one after the other, and report the result. */
+    async function postAllSaved() {
+        if (state.postingAll || state.posting) {
+            return;
+        }
+        if (state.dirty) {
+            App.toast({ type: "info", title: "Unsaved changes", message: "Save or undo the changes on this invoice first." });
+            return;
+        }
+        var pages = savedInvoicePages();
+        if (!pages.length) {
+            return;
+        }
+        var count = pages.length;
+        if (!window.confirm(count + (count === 1 ? " saved invoice" : " saved invoices") +
+                " will be posted to the database. After posting they can no longer be changed here. Continue?")) {
+            return;
+        }
+        state.postingAll = true;
+        state.posting = true;
+        postAllButton.disabled = true;
+        updatePostButton();
+        App.clearMessage(reviewMessage);
+        var posted = 0;
+        var failures = [];
+        for (var i = 0; i < pages.length; i++) {
+            postAllLabel.textContent = "Posting " + (i + 1) + " of " + count + "…";
+            try {
+                await App.apiRequest(invoiceApi("/post"), {
+                    method: "POST",
+                    headers: { Accept: "application/json", "Content-Type": "application/json" },
+                    body: JSON.stringify({ page: pages[i] })
+                });
+                posted++;
+            } catch (error) {
+                failures.push({ page: pages[i], message: error.message });
+                if (error.status === 503) {
+                    break; // Database not reachable: the rest would fail the same way.
+                }
+            }
+        }
+        state.postingAll = false;
+        state.posting = false;
+        await loadInvoiceData(state.currentPage);
+
+        if (!failures.length) {
+            App.toast({ type: "success", title: posted + " posted to database", timeout: 3500 });
+            return;
+        }
+        var skipped = count - posted - failures.length;
+        App.toast({
+            type: posted ? "warning" : "error",
+            title: posted + " posted, " + failures.length + " failed" + (skipped ? ", " + skipped + " not tried" : ""),
+            message: failures[0].message
+        });
+        var lines = failures.slice(0, 5).map(function (failure) {
+            return "Page " + failure.page + ": " + failure.message;
+        });
+        if (failures.length > 5) {
+            lines.push("…and " + (failures.length - 5) + " more.");
+        }
+        App.showMessage(reviewMessage, "error", "Not posted. " + lines.join(" "));
+    }
+
+    /** Send the saved invoice to the database staging tables. */
+    async function postInvoice() {
+        if (!state.data || state.data.status !== "saved" || state.dirty || state.posting) {
+            return;
+        }
+        var invoice = state.data.invoice || {};
+        var label = invoice.count > 1 ? "invoice " + invoice.index + " of " + invoice.count : "this invoice";
+        if (!window.confirm("Post " + label + " to the database? After posting it can no longer be changed here.")) {
+            return;
+        }
+        state.posting = true;
+        updatePostButton();
+        try {
+            var data = await App.apiRequest(invoiceApi("/post"), {
+                method: "POST",
+                headers: { Accept: "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify({ page: (invoice.pages && invoice.pages[0]) || state.currentPage })
+            });
+            state.invoiceRequestId++;
+            applyInvoiceData(data);
+            App.toast({
+                type: "success",
+                title: "Posted to database",
+                message: data.posting && data.posting.staging_id ? "Staging ID " + data.posting.staging_id : "",
+                timeout: 3500
+            });
+        } catch (error) {
+            if (Array.isArray(error.details) && error.details.length) {
+                showErrors(error.details);
+            }
+            App.showMessage(reviewMessage, "error", error.message);
+            App.toast({ type: "error", title: "Not posted", message: error.message });
+            await loadInvoiceData(state.currentPage); // Shows the stored error and keeps the invoice "saved".
+        } finally {
+            state.posting = false;
+            updatePostButton();
+        }
     }
 
     /* =====================================================================
        Line items
        ===================================================================== */
 
+    /** Create one editable cell of the line items table. */
     function createCellInput(rowIndex, column, value) {
-        var input = App.el("input", "cell-input" + (column === "description" ? "" : " cell-input--num"));
+        var input = App.el("input", "cell-input" + (COLUMNS[column].number ? " cell-input--num" : ""));
         input.type = "text";
-        input.value = column === "rate" || column === "amount" ? formatMoney(value) : value;
+        input.value = isMoneyColumn(column) ? formatMoney(value) : value;
         input.setAttribute("data-row", String(rowIndex));
         input.setAttribute("data-col", column);
         input.setAttribute("aria-label", COLUMN_LABELS[column] + ", line " + (rowIndex + 1));
         input.autocomplete = "off";
         input.spellcheck = false;
-        if (column !== "description") {
+        if (COLUMNS[column].number) {
             input.inputMode = "decimal";
         }
         return input;
     }
 
+    /** Draw the line items table. */
     function renderLines() {
         lineBody.textContent = "";
         state.lines.forEach(function (item, index) {
@@ -638,11 +1118,12 @@
             check.setAttribute("aria-label", "Select line " + (index + 1));
             checkCell.appendChild(check);
             row.appendChild(checkCell);
+            row.appendChild(App.el("td", "line-table__serial", index + 1));
 
-            ["description", "quantity", "rate", "amount"].forEach(function (column) {
+            LINE_COLUMNS.forEach(function (column) {
                 var cell = App.el("td");
-                cell.setAttribute("data-col", column);
-                cell.appendChild(createCellInput(index, column, item[column]));
+                cell.setAttribute("data-col", column.key);
+                cell.appendChild(createCellInput(index, column.key, item[column.key]));
                 row.appendChild(cell);
             });
             lineBody.appendChild(row);
@@ -652,6 +1133,7 @@
         updateLineSelection();
     }
 
+    /** Enable the delete button only when rows are selected. */
     function updateLineSelection() {
         var selected = state.lines.filter(function (item) { return item.selected; }).length;
         deleteLinesButton.disabled = selected === 0;
@@ -659,28 +1141,33 @@
         lineSelectAll.indeterminate = selected > 0 && selected < state.lines.length;
     }
 
+    /** Add an empty row to the line items table. */
     function addLine() {
-        state.lines.push({ description: "", quantity: "", rate: "", amount: "", confidence: null, selected: false });
+        state.lines.push(emptyLine());
         renderLines();
         setDirty(true);
         var inputs = lineBody.querySelectorAll('[data-col="description"] input');
         inputs[inputs.length - 1].focus();
     }
 
+    /** Delete the selected rows of the line items table. */
     function deleteSelectedLines() {
         state.lines = state.lines.filter(function (item) { return !item.selected; });
         renderLines();
         setDirty(true);
     }
 
+    /** Show or hide table columns according to the column menu. */
     function applyColumnVisibility() {
-        lineTable.classList.toggle("hide-quantity", !state.columns.quantity);
-        lineTable.classList.toggle("hide-rate", !state.columns.rate);
+        Object.keys(state.columns).forEach(function (key) {
+            lineTable.classList.toggle("hide-" + key, !state.columns[key]);
+        });
         columnMenu.querySelectorAll("[data-column-toggle]").forEach(function (box) {
             box.checked = state.columns[box.getAttribute("data-column-toggle")];
         });
     }
 
+    /** Open or close the menu that selects the visible table columns. */
     function toggleColumnMenu(show) {
         columnMenu.hidden = !show;
         editColumnsButton.setAttribute("aria-expanded", String(show));
@@ -712,10 +1199,12 @@
         return null;
     }
 
+    /** True when text clicked on the page may be copied into this field. */
     function isFillable(description) {
-        return Boolean(description) && description.kind !== "select";
+        return !isPosted() && Boolean(description) && description.kind !== "select";
     }
 
+    /** Select a field: the next text clicked on the page fills it. */
     function setActiveInput(input) {
         if (state.activeInput === input) {
             return;
@@ -740,6 +1229,7 @@
         }
     }
 
+    /** Deselect the active field. */
     function clearActiveInput() {
         if (state.activeInput) {
             var description = describeInput(state.activeInput);
@@ -755,6 +1245,7 @@
         updateHint();
     }
 
+    /** Update the hint text that explains what clicking on the page will do. */
     function updateHint() {
         var description = describeInput(state.activeInput);
         viewerHint.textContent = "";
@@ -775,11 +1266,13 @@
         state.activeSource = source;
         if (source && state.pages.length && source.page !== state.currentPage && source.page <= state.pages.length) {
             selectPage(source.page);
+            ensureInvoiceMatchesPage();
             return;
         }
         applySourceMark();
     }
 
+    /** Highlight on the page the text that the active field was read from. */
     function applySourceMark() {
         ocrOverlay.querySelectorAll(".is-source").forEach(function (shape) { shape.classList.remove("is-source"); });
         var source = state.activeSource;
@@ -793,6 +1286,7 @@
         }
     }
 
+    /** Copy the clicked OCR text line into the active field. */
     async function fillFromLine(line, lineIndex) {
         var input = state.activeInput;
         var description = describeInput(input);
@@ -804,7 +1298,7 @@
             parsed = await App.apiRequest(invoiceApi("/parse-value"), {
                 method: "POST",
                 headers: { Accept: "application/json", "Content-Type": "application/json" },
-                body: JSON.stringify({ kind: description.kind, text: line.text })
+                body: JSON.stringify({ kind: description.kind, text: line.text, page: state.currentPage })
             });
         } catch (error) {
             App.toast({ type: "warning", title: "Could not fill " + description.label, message: error.message, timeout: 4500 });
@@ -823,8 +1317,7 @@
         } else {
             var item = state.lines[description.row];
             item[description.column] = parsed.value;
-            input.value = description.column === "rate" || description.column === "amount"
-                ? formatMoney(parsed.value) : parsed.value;
+            input.value = isMoneyColumn(description.column) ? formatMoney(parsed.value) : parsed.value;
             input.classList.remove("is-invalid");
         }
         setDirty(true);
@@ -837,6 +1330,7 @@
        Saving
        ===================================================================== */
 
+    /** Collect the form values and line items to send to the server when saving. */
     function collectPayload(status) {
         var errors = [];
         var values = {};
@@ -852,23 +1346,34 @@
 
         var lineItems = [];
         state.lines.forEach(function (item, index) {
-            var clean = { description: item.description.trim(), confidence: item.confidence };
-            ["quantity", "rate", "amount"].forEach(function (column) {
-                var text = String(item[column] || "").trim();
-                var number = parseNumber(text, column !== "quantity");
+            var clean = { confidence: item.confidence };
+            LINE_COLUMNS.forEach(function (column) {
+                var text = String(item[column.key] || "").trim();
+                if (!column.number) {
+                    clean[column.key] = text;
+                    return;
+                }
+                var number = parseNumber(text.replace("%", ""), Boolean(column.money));
                 if (number === null) {
                     errors.push({
-                        field: "line_items." + index + "." + column,
-                        message: COLUMN_LABELS[column] + " of line " + (index + 1) + " must be a number."
+                        field: "line_items." + index + "." + column.key,
+                        message: column.label + " of line " + (index + 1) + " must be a number."
                     });
                 }
-                clean[column] = number === null ? text : number;
+                clean[column.key] = number === null ? text : number;
             });
             lineItems.push(clean);
         });
-        return { payload: { status: status, values: values, line_items: lineItems }, errors: errors };
+        var payload = { status: status, values: values, line_items: lineItems };
+        var invoice = state.data && state.data.invoice;
+        if (invoice && invoice.pages && invoice.pages.length) {
+            payload.page = invoice.pages[0];
+            payload.pages = invoice.pages;
+        }
+        return { payload: payload, errors: errors };
     }
 
+    /** Show the validation errors returned by the server. */
     function showErrors(errors) {
         var first = null;
         errors.forEach(function (error) {
@@ -891,15 +1396,25 @@
         }
     }
 
+    /** Remove all validation errors. */
     function clearErrors() {
         FIELD_KEYS.forEach(clearFieldError);
         lineBody.querySelectorAll(".is-invalid").forEach(function (cell) { cell.classList.remove("is-invalid"); });
         App.clearMessage(reviewMessage);
     }
 
-    async function save(status) {
+    /**
+     * Save the invoice in the form. automatic: saved as a draft because another invoice
+     * is being opened. Returns true when saved.
+     */
+    async function save(status, automatic) {
         if (state.saving) {
-            return;
+            return false;
+        }
+        if (invoiceForm.classList.contains("is-loading") ||
+            (!automatic && state.currentPage && state.data && !invoiceContains(state.currentPage))) {
+            App.toast({ type: "info", title: "Please wait", message: "The invoice of this page is still loading." });
+            return false;
         }
         clearErrors();
         var prepared = collectPayload(status);
@@ -908,10 +1423,11 @@
             updateAllNotes();
             App.toast({
                 type: "error",
-                title: status === "saved" ? "Fill in the required fields" : "Some values are not valid",
+                title: automatic ? "Draft not saved: some values are not valid"
+                    : status === "saved" ? "Fill in the required fields" : "Some values are not valid",
                 message: prepared.errors[0].message
             });
-            return;
+            return false;
         }
 
         state.saving = true;
@@ -923,19 +1439,26 @@
                 headers: { Accept: "application/json", "Content-Type": "application/json" },
                 body: JSON.stringify(prepared.payload)
             });
+            state.invoiceRequestId++;
             applyInvoiceData(data);
+            if (!automatic) {
+                ensureInvoiceMatchesPage();
+            }
+            var invoice = data.invoice || {};
             App.toast({
                 type: "success",
-                title: status === "draft" ? "Draft saved" : "Changes saved",
-                message: "Used for the Excel export.",
-                timeout: 3000
+                title: automatic ? "Draft saved automatically" : status === "draft" ? "Draft saved" : "Changes saved",
+                message: invoice.count > 1 ? "Invoice " + invoice.index + " of " + invoice.count : "",
+                timeout: automatic ? 2000 : 3000
             });
+            return true;
         } catch (error) {
             if (Array.isArray(error.details) && error.details.length) {
                 showErrors(error.details);
             }
             App.showMessage(reviewMessage, "error", error.message);
             App.toast({ type: "error", title: "Not saved", message: error.message });
+            return false;
         } finally {
             state.saving = false;
             saveDraftButton.disabled = false;
@@ -943,6 +1466,7 @@
         }
     }
 
+    /** Read the invoice data from the OCR text again (replaces the values in the form). */
     async function reextract() {
         if ((state.dirty || (state.data && state.data.status !== "needs_review")) &&
             !window.confirm("Replace the current values with a fresh reading of the invoice? Your changes will be lost.")) {
@@ -950,7 +1474,14 @@
         }
         reextractButton.disabled = true;
         try {
-            applyInvoiceData(await App.apiRequest(invoiceApi("/extract"), { method: "POST" }));
+            var data = await App.apiRequest(invoiceApi("/extract"), {
+                method: "POST",
+                headers: { Accept: "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify({ page: state.currentPage })
+            });
+            state.invoiceRequestId++;
+            applyInvoiceData(data);
+            ensureInvoiceMatchesPage();
             App.toast({ type: "success", title: "Invoice read again", timeout: 2500 });
         } catch (error) {
             App.showMessage(reviewMessage, "error", error.message);
@@ -963,6 +1494,7 @@
        Pages and viewer
        ===================================================================== */
 
+    /** Draw the page thumbnails on the left. */
     function renderThumbnails() {
         pageList.textContent = "";
         state.pages.forEach(function (page) {
@@ -994,9 +1526,15 @@
         updateThumbnailStates();
     }
 
+    /** Update the OCR state and invoice start marker of every page thumbnail. */
     function updateThumbnailStates() {
+        if (!state.document) {
+            return;
+        }
         var ocr = state.document.ocr;
         var running = ACTIVE_OCR_STATUSES.indexOf(ocr.status) !== -1;
+        var invoice = state.data && state.data.invoice;
+        var firstPages = invoice && invoice.first_pages ? invoice.first_pages : null;
         pageList.querySelectorAll(".thumb").forEach(function (button) {
             var number = Number(button.getAttribute("data-page-number"));
             var page = state.pages[number - 1];
@@ -1004,8 +1542,11 @@
             if (pageState === "pending" && running && ocr.current_page === number) {
                 pageState = "running";
             }
+            var continued = Boolean(firstPages) && firstPages.indexOf(number) === -1;
+            button.classList.toggle("is-continued", continued);
             button.querySelector(".thumb__dot").className = "thumb__dot is-" + pageState;
-            button.title = "Page " + number + " · " + App.statusLabel(pageState);
+            button.title = "Page " + number + " · " + App.statusLabel(pageState) +
+                (continued ? " · continues the invoice of the previous page" : "");
             var active = number === state.currentPage;
             button.classList.toggle("is-active", active);
             if (active) {
@@ -1016,11 +1557,13 @@
         });
     }
 
+    /** Read the page number from the browser address (#page=3). */
     function pageFromHash() {
         var match = /^#page=([0-9]+)$/.exec(window.location.hash);
         return match ? Number(match[1]) : null;
     }
 
+    /** Open a page: show its image and OCR text, and load the invoice that contains it. */
     function selectPage(pageNumber) {
         var page = state.pages[pageNumber - 1];
         if (!page) {
@@ -1039,10 +1582,12 @@
         pageTitle.textContent = "Page " + pageNumber + " of " + state.pages.length;
         prevPageButton.disabled = pageNumber <= 1;
         nextPageButton.disabled = pageNumber >= state.pages.length;
+        syncFormWithPage();
         loadPageImage(page);
         loadPageOcr(pageNumber);
     }
 
+    /** Load the page image into the viewer. */
     function loadPageImage(page) {
         var source = App.url(page.image_url);
         pageImageMessage.hidden = true;
@@ -1060,12 +1605,20 @@
         viewerCanvas.scrollTop = 0;
     }
 
+    /** Zoom level at which the whole page (width and height) fits into the viewer. */
     function fitScale() {
         var style = window.getComputedStyle(viewerCanvas);
-        var available = viewerCanvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-        return clamp(available / (state.naturalWidth || 1), ZOOM_MIN, ZOOM_MAX);
+        var availableWidth = viewerCanvas.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        var availableHeight = viewerCanvas.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+        var scale = availableWidth / (state.naturalWidth || 1);
+        // On small screens the viewer grows with the page, so only the width counts there.
+        if (state.naturalHeight && availableHeight > 200 && window.matchMedia("(min-width: 1001px)").matches) {
+            scale = Math.min(scale, availableHeight / state.naturalHeight);
+        }
+        return clamp(scale, ZOOM_MIN, ZOOM_MAX);
     }
 
+    /** Apply the current zoom level to the page image and the text boxes. */
     function applyZoom() {
         if (!state.naturalWidth) {
             return;
@@ -1076,17 +1629,19 @@
         viewerPage.style.width = Math.round(state.naturalWidth * state.scale) + "px";
         var percent = Math.round(state.scale * 100) + "%";
         zoomFitButton.textContent = state.zoomMode === "fit" ? "Fit" : percent;
-        zoomFitButton.title = state.zoomMode === "fit" ? "Fitted to width (" + percent + ")" : "Fit to width (0)";
+        zoomFitButton.title = state.zoomMode === "fit" ? "Fitted to page (" + percent + ")" : "Fit to page (0)";
         zoomOutButton.disabled = state.scale <= ZOOM_MIN;
         zoomInButton.disabled = state.scale >= ZOOM_MAX;
     }
 
+    /** Zoom in or out by a factor. */
     function zoomBy(factor) {
         state.zoomMode = "manual";
         state.scale = clamp(state.scale * factor, ZOOM_MIN, ZOOM_MAX);
         applyZoom();
     }
 
+    /** Zoom so that the whole page fits. */
     function zoomToFit() {
         state.zoomMode = "fit";
         applyZoom();
@@ -1094,6 +1649,7 @@
 
     /* ---------------- OCR result of the current page ---------------- */
 
+    /** Load the OCR result of one page from the server. */
     async function loadPageOcr(pageNumber) {
         var requestId = ++state.pageRequestId;
         state.result = null;
@@ -1112,6 +1668,7 @@
         }
     }
 
+    /** Clear the OCR text panel. */
     function resetOcrPanel() {
         ocrDetails.hidden = true;
         ocrMessage.hidden = true;
@@ -1121,6 +1678,7 @@
         clearOverlay();
     }
 
+    /** Show the loading state of the OCR text panel. */
     function renderOcrLoading() {
         resetOcrPanel();
         var skeleton = App.el("li", "ocr-skeleton");
@@ -1132,6 +1690,7 @@
         ocrLines.appendChild(skeleton);
     }
 
+    /** Show a message in the OCR text panel (for example "no text found"). */
     function showOcrMessage(kind, text) {
         ocrMessage.className = "ocr-message" + (kind ? " is-" + kind : "");
         ocrMessage.textContent = "";
@@ -1140,6 +1699,7 @@
         ocrMessage.hidden = false;
     }
 
+    /** Show the number of lines and the average confidence of the page. */
     function fillStats(result) {
         var confidence = result.average_confidence;
         App.fillFields(ocrDetails, {
@@ -1152,6 +1712,7 @@
         confidenceMeter.classList.toggle("is-low", (confidence || 0) < LOW_CONFIDENCE);
     }
 
+    /** Show the OCR text lines of the page and draw their boxes on the page image. */
     function renderOcrResult(data) {
         var result = data.ocr_result;
         var status = result ? result.status : data.page.ocr_status;
@@ -1179,6 +1740,7 @@
         applySourceMark();
     }
 
+    /** Create one clickable OCR text line in the text panel. */
     function createLineItem(line, index) {
         var item = App.el("li");
         var button = App.el("button", "ocr-line");
@@ -1200,11 +1762,13 @@
 
     /* ---------------- Text boxes on the page ---------------- */
 
+    /** Remove all text boxes drawn on the page image. */
     function clearOverlay() {
         ocrOverlay.textContent = "";
         state.highlighted = null;
     }
 
+    /** Convert an OCR box [left, top, right, bottom] into polygon points. */
     function boxToPolygon(box) {
         if (!box) {
             return null;
@@ -1212,6 +1776,7 @@
         return [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]];
     }
 
+    /** Draw the OCR text boxes on top of the page image. */
     function renderOverlay() {
         clearOverlay();
         var result = state.result;
@@ -1242,6 +1807,7 @@
         ocrOverlay.classList.toggle("is-hidden", !overlayToggle.checked);
     }
 
+    /** Scroll the viewer so that the given box is in the middle. */
     function centerBoxInViewer(box) {
         var outer = viewerCanvas.getBoundingClientRect();
         var inner = box.getBoundingClientRect();
@@ -1280,6 +1846,7 @@
         }
     }
 
+    /** Copy the OCR text of the page to the clipboard. */
     async function copyPageText() {
         if (!state.result || !state.result.text) {
             return;
@@ -1301,6 +1868,7 @@
        Tabs
        ===================================================================== */
 
+    /** Switch between the tabs of the right panel. */
     function switchTab(name, moveFocus) {
         var showDetails = name === "details";
         tabDetails.setAttribute("aria-selected", String(showDetails));
@@ -1318,6 +1886,7 @@
        OCR run and progress
        ===================================================================== */
 
+    /** Show a banner that explains the OCR state (not started, running, failed). */
     function updateOcrBanner() {
         if (!state.document) {
             return;
@@ -1351,6 +1920,7 @@
         }
     }
 
+    /** Ask the server to start OCR for this document. */
     async function runOcr() {
         runOcrButton.disabled = true;
         App.clearMessage(reviewMessage);
@@ -1365,6 +1935,7 @@
         }
     }
 
+    /** Start asking the server for the OCR status every few seconds. */
     function startPolling() {
         if (state.polling) {
             return;
@@ -1373,6 +1944,7 @@
         pollOcrStatus();
     }
 
+    /** Ask the server for the OCR status and update the screen. */
     async function pollOcrStatus() {
         var status;
         try {
@@ -1397,6 +1969,9 @@
         updateOcrBanner();
         if (current && current.ocr_status !== currentStatusBefore) {
             loadPageOcr(state.currentPage);
+            if (!state.dirty) {
+                loadInvoiceData(state.currentPage); // The open page was just read: fill the form.
+            }
         }
 
         if (ACTIVE_OCR_STATUSES.indexOf(status.status) !== -1) {
@@ -1407,6 +1982,7 @@
         await onOcrFinished(status);
     }
 
+    /** Called when OCR has finished: show a message and refresh the screen. */
     async function onOcrFinished(status) {
         if (status.status === "failed") {
             App.toast({ type: "error", title: "OCR failed", message: status.error || "See the OCR text tab." });
@@ -1421,7 +1997,7 @@
             });
             return;
         }
-        await loadInvoiceData();
+        await loadInvoiceData(state.currentPage);
         App.toast({
             type: status.status === "partial" ? "warning" : "success",
             title: status.status === "partial" ? "OCR partly finished" : "Invoice read",
@@ -1429,30 +2005,11 @@
         });
     }
 
-    /* ---------------- Excel export ---------------- */
-
-    async function exportExcel() {
-        exportButton.disabled = true;
-        exportLabel.textContent = "Exporting…";
-        try {
-            var filename = await App.downloadFile(
-                "/api/documents/" + encodeURIComponent(documentId) + "/export/excel",
-                "document_ocr.xlsx"
-            );
-            var unsaved = state.dirty ? " (unsaved changes are not included)" : "";
-            App.toast({ type: "success", title: "Excel file downloaded", message: filename + unsaved, timeout: 4500 });
-        } catch (error) {
-            App.toast({ type: "error", title: "Export failed", message: error.message });
-        } finally {
-            exportButton.disabled = false;
-            exportLabel.textContent = "Export to Excel";
-        }
-    }
-
     /* =====================================================================
        Resizable divider
        ===================================================================== */
 
+    /** Set the width of the left panel (page viewer). */
     function setLeftWidth(pixels) {
         var total = workspace.getBoundingClientRect().width;
         var width = clamp(pixels, SPLIT_MIN_LEFT, Math.max(SPLIT_MIN_LEFT, total - SPLIT_MIN_RIGHT - 10));
@@ -1463,6 +2020,7 @@
         return width;
     }
 
+    /** Restore the panel width and visible table columns the user chose earlier. */
     function restoreLayout() {
         var saved = Number(storageGet("reviewLeftWidth"));
         if (saved && window.matchMedia("(min-width: 1001px)").matches) {
@@ -1472,13 +2030,17 @@
         if (columns) {
             try {
                 var parsed = JSON.parse(columns);
-                state.columns.quantity = parsed.quantity !== false;
-                state.columns.rate = parsed.rate !== false;
+                Object.keys(state.columns).forEach(function (key) {
+                    if (typeof parsed[key] === "boolean") {
+                        state.columns[key] = parsed[key];
+                    }
+                });
             } catch (error) { /* Keep defaults. */ }
         }
         applyColumnVisibility();
     }
 
+    /** Start dragging the divider between the two panels. */
     function startResize(event) {
         event.preventDefault();
         splitter.setPointerCapture(event.pointerId);
@@ -1486,6 +2048,7 @@
         document.body.classList.add("is-resizing");
     }
 
+    /** Move the divider while the user drags it. */
     function moveResize(event) {
         if (!splitter.classList.contains("is-dragging")) {
             return;
@@ -1493,6 +2056,7 @@
         setLeftWidth(event.clientX - workspace.getBoundingClientRect().left);
     }
 
+    /** Stop dragging the divider between the two panels. */
     function endResize(event) {
         if (!splitter.classList.contains("is-dragging")) {
             return;
@@ -1512,6 +2076,11 @@
     // Document list
     searchInput.addEventListener("input", renderDocumentList);
     documentTableBody.addEventListener("click", function (event) {
+        var deleteButton = event.target.closest("[data-delete-id]");
+        if (deleteButton) {
+            deleteDocument(deleteButton.getAttribute("data-delete-id"), deleteButton);
+            return;
+        }
         if (event.target.closest("a")) {
             return;
         }
@@ -1583,7 +2152,7 @@
     lineBody.addEventListener("focusout", function (event) {
         var input = event.target;
         var column = input.getAttribute && input.getAttribute("data-col");
-        if (column === "rate" || column === "amount") {
+        if (isMoneyColumn(column)) {
             var number = parseNumber(input.value, true);
             if (number !== null) {
                 input.value = formatMoney(number);
@@ -1625,10 +2194,11 @@
     });
     document.addEventListener("click", function () { toggleColumnMenu(false); });
 
-    // Save, export, re-read, OCR
+    // Save, re-read, OCR
     saveDraftButton.addEventListener("click", function () { save("draft"); });
     saveChangesButton.addEventListener("click", function () { save("saved"); });
-    exportButton.addEventListener("click", exportExcel);
+    postButton.addEventListener("click", postInvoice);
+    postAllButton.addEventListener("click", postAllSaved);
     reextractButton.addEventListener("click", reextract);
     runOcrButton.addEventListener("click", runOcr);
 
@@ -1637,7 +2207,7 @@
     tabOcr.addEventListener("click", function () { switchTab("ocr", false); });
     [tabDetails, tabOcr].forEach(function (tab) {
         tab.addEventListener("keydown", function (event) {
-            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+            if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && !tabOcr.hidden) {
                 event.preventDefault();
                 switchTab(panelDetails.hidden ? "details" : "ocr", true);
             }
@@ -1649,11 +2219,13 @@
     pageList.addEventListener("click", function (event) {
         var button = event.target.closest(".thumb");
         if (button) {
-            selectPage(Number(button.getAttribute("data-page-number")));
+            goToPage(Number(button.getAttribute("data-page-number")));
         }
     });
-    prevPageButton.addEventListener("click", function () { selectPage(state.currentPage - 1); });
-    nextPageButton.addEventListener("click", function () { selectPage(state.currentPage + 1); });
+    prevPageButton.addEventListener("click", function () { goToPage(state.currentPage - 1); });
+    nextPageButton.addEventListener("click", function () { goToPage(state.currentPage + 1); });
+    splitInvoiceButton.addEventListener("click", function () { setPageBreak(true); });
+    joinInvoiceButton.addEventListener("click", function () { setPageBreak(false); });
 
     pageImage.addEventListener("load", function () {
         viewerPage.classList.remove("is-loading");
@@ -1789,10 +2361,10 @@
         var key = event.key;
         if ((key === "ArrowLeft" || key === "PageUp") && state.currentPage > 1) {
             event.preventDefault();
-            selectPage(state.currentPage - 1);
+            goToPage(state.currentPage - 1);
         } else if ((key === "ArrowRight" || key === "PageDown") && state.currentPage < state.pages.length) {
             event.preventDefault();
-            selectPage(state.currentPage + 1);
+            goToPage(state.currentPage + 1);
         } else if (key === "+" || key === "=") {
             zoomBy(ZOOM_STEP);
         } else if (key === "-") {

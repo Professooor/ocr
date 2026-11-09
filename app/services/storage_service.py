@@ -41,49 +41,60 @@ OCR_FOLDER = "ocr"
 
 
 def ensure_storage_dirs():
+    """Create the documents, temp and logs folders if they do not exist yet."""
     for folder in (config.DOCUMENTS_DIR, config.TEMP_DIR, config.LOG_DIR):
         folder.mkdir(parents=True, exist_ok=True)
 
 
 def new_document_id():
+    """Create a new random document ID (32 hexadecimal characters)."""
     return uuid.uuid4().hex
 
 
 def utc_now():
+    """Current time in UTC as text, for example 2026-01-31T10:15:00+00:00."""
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def check_document_id(document_id):
+    """Make sure the ID has the expected format. This blocks path traversal such as "../"."""
     if not isinstance(document_id, str) or not DOCUMENT_ID_PATTERN.match(document_id):
         raise ServiceError("Invalid document ID.", 400, "INVALID_DOCUMENT_ID")
     return document_id
 
 
 def get_document_dir(document_id):
+    """Folder of one document. Every path below is built from this folder."""
     return config.DOCUMENTS_DIR / check_document_id(document_id)
 
 
 def get_original_dir(document_id):
+    """Folder that holds the uploaded original file."""
     return get_document_dir(document_id) / ORIGINAL_FOLDER
 
 
 def get_pages_dir(document_id):
+    """Folder that holds the page images."""
     return get_document_dir(document_id) / PAGES_FOLDER
 
 
 def get_ocr_dir(document_id):
+    """Folder that holds the OCR result files."""
     return get_document_dir(document_id) / OCR_FOLDER
 
 
 def get_metadata_path(document_id):
+    """Path of document.json, the metadata file of the document."""
     return get_document_dir(document_id) / METADATA_FILENAME
 
 
 def page_image_filename(page_number):
+    """File name of a page image, for example page_0001.png."""
     return f"page_{page_number:04d}.png"
 
 
 def ocr_result_filename(page_number):
+    """File name of a page OCR result, for example page_0001.json."""
     return f"page_{page_number:04d}.json"
 
 
@@ -102,6 +113,7 @@ def safe_display_filename(filename):
 
 
 def is_inside_storage(path):
+    """True when the path is inside the storage folder."""
     try:
         Path(path).resolve().relative_to(config.STORAGE_DIR)
         return True
@@ -123,6 +135,7 @@ def remove_path(path):
 
 
 def new_temp_path(suffix=""):
+    """Return a new unique path in the temp folder (the file is not created)."""
     config.TEMP_DIR.mkdir(parents=True, exist_ok=True)
     return config.TEMP_DIR / f"{uuid.uuid4().hex}{suffix}"
 
@@ -138,6 +151,7 @@ def write_json_atomic(path, data):
 
 
 def read_json(path):
+    """Read a JSON file and return its content."""
     with open(path, "r", encoding="utf-8") as handle:
         return json.load(handle)
 

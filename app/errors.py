@@ -10,6 +10,7 @@ so internal details never reach the browser.
 
 class ServiceError(Exception):
     def __init__(self, message, status_code=400, code="BAD_REQUEST", details=None):
+        """message is shown to the user; status_code, code and details are sent in the JSON error response."""
         super().__init__(message)
         self.message = message
         self.status_code = status_code

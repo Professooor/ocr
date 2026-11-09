@@ -5,9 +5,11 @@ A web application that reads invoices:
 1. **Upload** one document (PDF, PNG, JPG/JPEG, BMP, TIF/TIFF).
 2. **Convert** every PDF page to a PNG image at a selectable DPI (**50–300, default 75**).
 3. **OCR** every page with **PaddleOCR 3.x**, stored page by page with text, confidence and coordinates.
-4. **Review** the invoice: the page on the left, the data read from it on the right (vendor, invoice
-   number, dates, PO number, subtotal, tax, total, line items). Correct anything OCR got wrong,
-   save it, and **export it to Excel**.
+4. **Review** the invoice: the page on the left, the data read from it on the right (supplier and
+   buyer with NTN, STRN and address; invoice, FBR invoice, PO, DC, gate pass and contract numbers;
+   dates; value excluding tax, discount, sales tax % and amount, further tax, total, total quantity,
+   amount in words; line items). Correct anything OCR got wrong,
+   and save it. A scanned batch with many invoices is split into invoices automatically.
 
 | Component | Version |
 |---|---|
@@ -19,7 +21,6 @@ A web application that reads invoices:
 | PDF processing | PyMuPDF 1.26.0 |
 | OCR | PaddleOCR 3.7.0 (PaddleX 3.7.2) with PP-OCRv6 models on ONNX Runtime 1.16.3 |
 | Database | Oracle Database 19c through python-oracledb 26.1.0 (optional) |
-| Excel export | openpyxl 3.1.5 (pure Python) |
 
 ---
 
@@ -44,11 +45,11 @@ This section separates what has been **tested** from what is supported only by *
 - Full automated test suite: **269 tests passed** (upload, validation, DPI 50/75/150/200/250/300,
   rejection below 50 and above 300, multi-page order, image retrieval, re-conversion, real PaddleOCR,
   invoice field extraction including real OCR of generated sample invoices, saving and validation of
-  corrected data, Document Review, Excel export, error handling, frontend assets, security rules,
+  corrected data, Document Review, error handling, frontend assets, security rules,
   a 60 MB upload and a 400-page PDF).
 - Real browser test (headless Microsoft Edge 157): drag-and-drop upload → conversion at 150 DPI →
   OCR → invoice review: autofill, field notes, click-the-invoice-to-fill, required-field errors,
-  editing amounts and line items, save, reload, Excel download with the corrected values, resizable
+  editing amounts and line items, save, reload, resizable
   divider, light and dark mode and a phone-sized screen; 44 of 44 checks passed, no JavaScript errors.
   A 120 MB PDF was uploaded successfully.
 - Invoice field extraction was tested only on generated sample invoices and unit-test layouts, **not
@@ -131,7 +132,6 @@ PaddleOCR/
 │   │   ├── ocr_results_api.py
 │   │   ├── document_review_api.py
 │   │   ├── invoice_data_api.py      invoice fields: read, correct, save
-│   │   ├── document_export_api.py   Excel download
 │   │   ├── health_api.py
 │   │   ├── api_responses.py        standard JSON response format
 │   │   └── error_handlers.py       errors -> JSON (no tracebacks to the browser)
@@ -145,7 +145,6 @@ PaddleOCR/
 │   │   ├── document_review_service.py
 │   │   ├── invoice_extraction_service.py  finds fields and line items in the OCR text
 │   │   ├── invoice_data_service.py     stores, validates and saves the reviewed data
-│   │   ├── document_export_service.py  builds the .xlsx workbook
 │   │   ├── oracle_db_service.py
 │   │   ├── document_metadata_service.py
 │   │   └── storage_service.py
@@ -302,19 +301,34 @@ Health check: http://127.0.0.1:8000/api/health
 
 1. **Upload** page: drag a document onto the drop zone (or click to browse), set the
    **PDF conversion DPI** with the slider or the number field (whole number 50–300, default 75;
-   the A4 pixel size is shown live), then click **Upload and process**. The timeline shows the
+   the A4 pixel size is shown live), then click **Process Document**. The timeline shows the
    upload percentage, page conversion, and OCR progress; page thumbnails get a check mark as each
    page is read. There is no file size or page count limit.
 2. **Document Review** page: search the document list (each row shows its review status) and
    open an invoice. The screen is split in two; drag the divider to resize.
-   - **Left:** page thumbnails and the page image. The recognised text boxes are drawn on the page.
-     Zoom with the toolbar or the `+` / `-` / `0` keys; change page with the Left/Right arrow keys.
+   - **Left:** page thumbnails and the page image. The recognised text boxes are off by default;
+     switch them on with **Text boxes** (they also appear while a field is selected, so text can be
+     clicked). Zoom with the toolbar or the `+` / `-` / `0` keys; change page with the Left/Right arrow keys.
+   - **Small print:** after OCR, every PDF page whose invoice number, date or amounts could not be read
+     (typically small print at 75 DPI) is rendered again at `OCR_DETAIL_DPI` (150) and read again. Only
+     those pages are affected, so the batch stays fast; the sharper reading is kept only when it reads
+     at least as much text.
+   - **Several invoices in one document:** the form always shows the invoice of the open page.
+     Where each invoice starts is found from the OCR text: a "Page 1" / "Page 2 of 3" marker decides
+     first, then the invoice number (same number = same invoice), then whether the page has its own
+     date or total; a page with none of these (terms, attachments) belongs to the invoice before it.
+     A "+" on a thumbnail marks a page that continues the previous invoice. If the split is wrong,
+     use **New invoice from this page** or **Join with previous invoice**. When you open a page of
+     another invoice, unsaved changes are saved as a draft automatically. The document list shows
+     how many invoices are saved (for example *12 / 161 saved*).
    - **Right, "Invoice details":** the form is filled automatically from the OCR text. Under each
      field a note says where the value came from: *Autofilled from invoice*, *please verify*
      (low OCR confidence or an unclear date), *Not found on the invoice*, *Entered manually* or
      *Edited* (with what OCR had read). Vendor name, invoice number, invoice date, due date and total
-     due are required. Line items are an editable table: add or delete lines, and hide the
-     Quantity or Rate column with **Edit Columns**.
+     due are required. The form is grouped into Supplier, Buyer, Invoice and Amounts. Line items
+     are an editable table (description, HS code, UOM, quantity, rate, value excluding tax, tax %,
+     sales tax, further tax, discount, value including tax): add or delete lines, and show or hide
+     the optional columns with **Edit Columns** (further tax and discount are hidden at first).
    - **Fixing a wrong value:** type the correct value, or select the field and **click the right
      text on the invoice**; the value is read from the clicked text and filled in. While a field is
      selected, the line it was read from is outlined in green on the page. Esc cancels.
@@ -323,22 +337,22 @@ Health check: http://127.0.0.1:8000/api/health
      fresh reading of the invoice on request.
    - **Right, "OCR text":** every recognised line with its confidence; hover a line to see its box on
      the page. Lines below 80 % confidence are shown in amber.
-3. **Export to Excel** (Document Review header, and on the Upload page when processing finishes)
-   downloads `<file name>_ocr.xlsx` with four sheets: **Invoice data** (the reviewed fields and
-   line items, with where each value came from), **Summary** (document details and one row per
-   page), **Lines** (every recognised line with confidence and box coordinates, with filters) and
-   **Page text**. OCR text is always stored as plain text, never as an Excel formula.
 
 How the fields are found: labels such as "Invoice Number", "Due Date" or "Total Due" are located in
 the OCR text, and the value is taken from the same line, from the line to the right, or from the
-line below. Line items are read from the table under a header such as "Description / Qty / Rate /
-Amount". This is rule based, not perfect: unusual layouts will need corrections, which is what the
+line below. Supplier and buyer details (NTN, STRN, address) are told apart by the nearest section
+heading above them ("Buyer", "Purchaser's Details", "Customer"...) or the buyer's name; details with no
+heading above them belong to the supplier. Line items are read from the table under a header such as
+"Description / Qty / Rate / Amount"; on each row the HS code, unit and tax % are picked up, and sales
+tax, further tax and the value including tax are found from value + tax (+ further tax) = value
+including tax. This is rule based, not perfect: unusual layouts will need corrections, which is what the
 review screen is for. A date like 03/04/2025 is read day/month by default; set
 `INVOICE_DATE_ORDER=mdy` in `.env` for month/day (an unambiguous date elsewhere on the invoice,
 such as 25/12/2025, overrides this).
 
 The interface uses only plain HTML, CSS and JavaScript (no frameworks, no internet resources), so it
-also works on a server without internet access. It follows the operating system's light or dark mode.
+also works on a server without internet access. It follows the operating system's light or dark mode, and the
+button in the header switches between system, light and dark.
 
 DPI applies to PDF files only. Images are processed at their original resolution.
 Higher DPI gives sharper images, larger files and longer processing. An A4 page at 300 DPI is
@@ -352,6 +366,7 @@ highest DPI that would work.
 | `OCR_ENGINE` | `onnxruntime` | Same engine as production |
 | `OCR_TEXT_DETECTION_MODEL` / `OCR_TEXT_RECOGNITION_MODEL` | `PP-OCRv6_small_det` / `PP-OCRv6_small_rec` | `PP-OCRv6_medium_*` is more accurate on hard scans but slower |
 | `OCR_CPU_THREADS` | `4` | |
+| `OCR_DETAIL_DPI` | `150` | detail pass: an incomplete PDF page is rendered again at this DPI and read again; `0` = off |
 
 Measured on an Intel Core i5-7300U (2 cores / 4 threads), A4 page at 150 DPI, 17 text lines:
 small models **3.3 s** per page, medium models 22.6 s per page, same text recognised.
@@ -628,17 +643,20 @@ All API responses use one format:
 | GET | `/api/documents/{id}/pages` | page list with image URLs, sizes and DPI |
 | GET | `/api/documents/{id}/pages/{n}/image` | PNG image of page *n* |
 | POST | `/api/documents/{id}/ocr` | queue OCR for pages without a successful result (202) |
+| POST | `/api/documents/{id}/ocr/detail` | read pages that were not read completely again at `OCR_DETAIL_DPI` (for documents read before) |
 | GET | `/api/documents/{id}/ocr/status` | overall and per-page OCR status |
 | GET | `/api/documents/{id}/ocr/results` | OCR results of all pages |
 | GET | `/api/documents/{id}/pages/{n}/ocr` | OCR result of page *n* |
 | GET | `/api/review/documents` | documents for the review list |
 | GET | `/api/review/documents/{id}` | document details and pages |
 | GET | `/api/review/documents/{id}/pages/{n}` | page, OCR result and a message when no result exists |
-| GET | `/api/documents/{id}/invoice-data` | fields and line items (read from the OCR text on first use, or the saved values) |
-| PUT | `/api/documents/{id}/invoice-data` | JSON `{"status": "draft"\|"saved", "values": {...}, "line_items": [...]}`; `saved` needs the required fields |
-| POST | `/api/documents/{id}/invoice-data/extract` | discard the current values and read the invoice again |
+| GET | `/api/documents/{id}/invoice-data?page=n` | fields and line items of the invoice that contains page *n* (default 1), its pages, and how many invoices are saved |
+| PUT | `/api/documents/{id}/invoice-data` | JSON `{"status": "draft"\|"saved", "values": {...}, "line_items": [...], "page": n, "pages": [...]}`; `saved` needs the required fields; `pages` that no longer match → 409 |
+| POST | `/api/documents/{id}/invoice-data/extract` | JSON `{"page": n}`: discard the values of that invoice and read it again |
+| POST | `/api/documents/{id}/invoice-data/page-break` | JSON `{"page": n, "starts_invoice": true\|false}`: correct where an invoice starts |
+| DELETE | `/api/documents/{id}?confirm=true\|false` | delete the whole document (original, page images, OCR results, saved data). 409 `OCR_IN_PROGRESS` while OCR runs; 409 `DOCUMENT_HAS_POSTED` when invoices were posted to the database, repeat with `confirm=true` to delete anyway (the database rows stay) |
+| POST | `/api/documents/{id}/invoice-data/post` | JSON `{"page": n}`: send the **saved** invoice to the Oracle staging tables (`deploy/database/invoice_staging_schema.sql`); it becomes read-only. 503 when Oracle is not configured, 409 `INVOICE_NOT_SAVED` / `INVOICE_POSTED` / `INVOICE_DUPLICATE` |
 | POST | `/api/documents/{id}/invoice-data/parse-value` | JSON `{"kind": "text\|code\|date\|amount\|quantity", "text": "..."}` → the value read from that text |
-| GET | `/api/documents/{id}/export/excel` | download the invoice data and OCR text as an `.xlsx` workbook |
 | GET | `/api/health` | status (does not load OCR or connect to Oracle) |
 
 Interactive API documentation: http://127.0.0.1:8000/docs

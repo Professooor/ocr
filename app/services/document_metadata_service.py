@@ -1,12 +1,17 @@
 """
 Read and write document processing metadata (document.json).
 
+Every document also gets a readable reference number, DOC-<year>-<4-digit sequence>
+(for example DOC-2026-0001), shown to users next to the internal document ID. The
+internal ID stays the folder name and the API key; the reference number is display only.
+
 Metadata is changed by upload, page conversion and the background OCR job, so
 every read and write goes through one lock. The application is designed to run
 as a single process (one Uvicorn worker), which makes a thread lock sufficient.
 """
 
 import logging
+import re
 import threading
 
 from app.errors import ServiceError
@@ -17,14 +22,19 @@ logger = logging.getLogger(__name__)
 
 _metadata_lock = threading.RLock()
 
+REFERENCE_PREFIX = "DOC"
+REFERENCE_PATTERN = re.compile(r"^" + REFERENCE_PREFIX + r"-(\d{4})-(\d{4,})$")
+
 
 def save_metadata(document_id, metadata):
+    """Write document.json (under the lock) and update its "updated_at" time."""
     with _metadata_lock:
         metadata["updated_at"] = storage_service.utc_now()
         storage_service.write_json_atomic(storage_service.get_metadata_path(document_id), metadata)
 
 
 def load_metadata(document_id):
+    """Read document.json. Raises a 404 ServiceError when the document does not exist."""
     path = storage_service.get_metadata_path(document_id)
     with _metadata_lock:
         if not path.exists():
@@ -61,9 +71,49 @@ def list_all_metadata():
     return documents
 
 
+def upload_year(metadata):
+    """Year of the upload (from "uploaded_at"), used in the reference number."""
+    uploaded = str(metadata.get("uploaded_at") or "")
+    return uploaded[:4] if re.match(r"^\d{4}", uploaded) else storage_service.utc_now()[:4]
+
+
+def next_reference_number(year, documents):
+    """The next free reference number of the year: one more than the highest already given."""
+    highest = 0
+    for metadata in documents:
+        match = REFERENCE_PATTERN.match(str(metadata.get("reference_number") or ""))
+        if match and match.group(1) == year:
+            highest = max(highest, int(match.group(2)))
+    return f"{REFERENCE_PREFIX}-{year}-{highest + 1:04d}"
+
+
+def create_metadata(document_id, metadata):
+    """Save the metadata of a new document, with the next reference number of its upload year."""
+    with _metadata_lock:
+        metadata["reference_number"] = next_reference_number(upload_year(metadata), list_all_metadata())
+        save_metadata(document_id, metadata)
+        return metadata
+
+
+def assign_missing_reference_numbers():
+    """Give a reference number to documents stored before reference numbers existed (oldest first)."""
+    with _metadata_lock:
+        documents = list_all_metadata()
+        missing = [item for item in documents if not item.get("reference_number")]
+        for metadata in sorted(missing, key=lambda item: item.get("uploaded_at", "")):
+            metadata["reference_number"] = next_reference_number(upload_year(metadata), documents)
+            save_metadata(metadata["document_id"], metadata)
+            logger.info("Document %s: reference number %s", metadata["document_id"], metadata["reference_number"])
+        return len(missing)
+
+
 def build_page_image_url(metadata, page):
     """Image URL with a version parameter so browsers reload images after re-conversion."""
-    version = f"{metadata['conversion'].get('dpi') or 'native'}-{metadata['conversion'].get('completed_at', '')}"
+    # The page's own DPI is part of the version: a page read again in more detail gets a new image.
+    version = (
+        f"{metadata['conversion'].get('dpi') or 'native'}-{page.get('dpi') or ''}-"
+        f"{metadata['conversion'].get('completed_at', '')}"
+    )
     version = "".join(ch for ch in version if ch.isalnum() or ch == "-")
     return (
         f"/api/documents/{metadata['document_id']}/pages/{page['page_number']}/image"
@@ -77,6 +127,7 @@ def build_document_summary(metadata):
     pages = metadata.get("pages", [])
     return {
         "document_id": metadata["document_id"],
+        "reference_number": metadata.get("reference_number"),
         "original_filename": metadata.get("original_filename"),
         "document_kind": metadata.get("document_kind"),
         "file_type": metadata.get("file_type"),
@@ -93,10 +144,12 @@ def build_document_summary(metadata):
         },
         "ocr": build_ocr_summary(metadata),
         "data_status": metadata.get("data_status"),
+        "data_counts": metadata.get("data_counts"),
     }
 
 
 def build_ocr_summary(metadata):
+    """OCR status of the document plus how many pages are completed, empty, failed or pending."""
     ocr = metadata.get("ocr", {})
     pages = metadata.get("pages", [])
     counts = {"pending": 0, "completed": 0, "no_text": 0, "failed": 0}
@@ -121,6 +174,7 @@ def build_ocr_summary(metadata):
 
 
 def build_page_summary(metadata, page):
+    """Public information about one page (image URL, size, DPI and OCR status)."""
     return {
         "page_number": page["page_number"],
         "image_url": build_page_image_url(metadata, page),

@@ -106,7 +106,7 @@ def upload_document(upload_file, raw_dpi):
             "pages": [],
             "ocr": {"status": "not_started"},
         }
-        document_metadata_service.save_metadata(document_id, metadata)
+        document_metadata_service.create_metadata(document_id, metadata)
 
         if content["document_kind"] == "pdf":
             pdf_processing_service.convert_pdf_to_images(document_id, dpi)
@@ -118,8 +118,9 @@ def upload_document(upload_file, raw_dpi):
 
     metadata = document_metadata_service.load_metadata(document_id)
     logger.info(
-        "Document %s uploaded: %s, %d bytes, %d page(s), DPI %s",
+        "Document %s (%s) uploaded: %s, %d bytes, %d page(s), DPI %s",
         document_id,
+        metadata.get("reference_number"),
         metadata["file_type"],
         size,
         len(metadata["pages"]),

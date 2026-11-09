@@ -10,11 +10,13 @@ Oracle Database 19c connectivity with python-oracledb.
 - Document upload, page conversion and OCR do not depend on this module, so the
   application works without a database.
 
-Database safety: this module does not create, alter, drop, truncate or rename
-any database object, and it does not write to any table.
+Database safety: this module never creates, alters, drops, truncates or renames
+any database object. It writes rows only when a caller runs its statements through
+run_in_transaction(), which commits everything or nothing.
 """
 
 import logging
+import re
 import threading
 
 from app import config
@@ -27,10 +29,12 @@ _thick_mode_ready = False
 
 
 def is_configured():
+    """True when Oracle is enabled and user, password and DSN are all set."""
     return bool(config.ORACLE_ENABLED and config.ORACLE_USER and config.ORACLE_PASSWORD and config.ORACLE_DSN)
 
 
 def get_mode():
+    """Return "thick" when an Oracle Client folder is configured, otherwise "thin"."""
     return "thick" if config.ORACLE_CLIENT_LIB_DIR else "thin"
 
 
@@ -44,9 +48,12 @@ def init_client_mode():
             return
         import oracledb
 
-        oracledb.init_oracle_client(lib_dir=config.ORACLE_CLIENT_LIB_DIR)
+        oracledb.init_oracle_client(lib_dir=config.ORACLE_CLIENT_LIB_DIR, config_dir=config.ORACLE_CONFIG_DIR or None)
         _thick_mode_ready = True
-        logger.info("python-oracledb Thick mode enabled (Oracle Client folder: %s)", config.ORACLE_CLIENT_LIB_DIR)
+        logger.info(
+            "python-oracledb Thick mode enabled (Oracle Client folder: %s, network config: %s)",
+            config.ORACLE_CLIENT_LIB_DIR, config.ORACLE_CONFIG_DIR or "client default",
+        )
 
 
 def get_connection():
@@ -88,6 +95,51 @@ def fetch_all(sql, parameters=None):
     except oracledb.Error as error:
         logger.error("Oracle query failed: %s", error)
         raise ServiceError("The database query failed.", 500, "ORACLE_QUERY_FAILED") from error
+
+
+def qualified_name(name):
+    """Table name with the configured owner (ORACLE_SCHEMA), e.g. OWNER.TABLE_NAME."""
+    return f"{config.ORACLE_SCHEMA}.{name}" if config.ORACLE_SCHEMA else name
+
+
+def constraint_name(error):
+    """Name of the violated constraint from an ORA-00001 / ORA-02291 message (without the owner), or None."""
+    match = re.search(r"\(([^)]+)\)", str(error))
+    return match.group(1).split(".")[-1].upper() if match else None
+
+
+def run_in_transaction(work):
+    """
+    Run work(cursor) in one transaction: commit when it returns, roll back when it fails.
+    Returns what work returns. Only parameterized statements must be used inside work.
+
+    Raises ServiceError: 409 ORACLE_CONSTRAINT_VIOLATED (details: {"constraint": name}) for a
+    unique / foreign key / check violation, 500 ORACLE_WRITE_FAILED for other database errors.
+    """
+    import oracledb
+
+    with get_connection() as connection:
+        try:
+            with connection.cursor() as cursor:
+                result = work(cursor)
+            connection.commit()
+            return result
+        except oracledb.IntegrityError as error:
+            connection.rollback()
+            name = constraint_name(error)
+            logger.warning("Oracle write refused by constraint %s: %s", name, error)
+            raise ServiceError(
+                "The database refused the data (a constraint was violated).", 409,
+                "ORACLE_CONSTRAINT_VIOLATED", {"constraint": name},
+            ) from error
+        except oracledb.Error as error:
+            connection.rollback()
+            logger.error("Oracle write failed: %s", error)
+            raise ServiceError("Writing to the database failed.", 500, "ORACLE_WRITE_FAILED",
+                               {"reason": str(error).splitlines()[0][:300]}) from error
+        except BaseException:
+            connection.rollback()
+            raise
 
 
 def test_connection():

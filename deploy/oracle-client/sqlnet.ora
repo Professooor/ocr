@@ -1,0 +1,9 @@
+# Oracle Net settings used by this app in Thick mode (ORACLE_CONFIG_DIR points here).
+# The Instant Client's own sqlnet.ora may contain SQLNET.AUTHENTICATION_SERVICES = (NTS)
+# (Windows native authentication). Against a Linux database server that makes connections
+# fail now and then with ORA-12637 / ORA-28547, so this app uses no native authentication.
+SQLNET.AUTHENTICATION_SERVICES = (NONE)
+
+# Out-of-band breaks are dropped by some firewalls between the app and the database,
+# which shows up as ORA-12637 "Packet receive failed". Send breaks in-band instead.
+DISABLE_OOB = ON

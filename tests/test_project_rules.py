@@ -21,13 +21,16 @@ def source_files():
 
 
 # The application reads invoices, so invoice wording belongs in the review screen,
-# the invoice data modules and the export. Everything else (upload, PDF, OCR,
+# the invoice data modules. Everything else (upload, PDF, OCR,
 # storage, Oracle, shared files) stays generic and must not use invoice wording.
 INVOICE_WORDING_ALLOWED = {
     "invoice_data_api.py",
+    "invoice_posting_api.py",
+    "test_document_delete.py",
+    "invoice_posting_service.py",
+    "test_invoice_posting.py",
     "invoice_data_service.py",
     "invoice_extraction_service.py",
-    "document_export_service.py",
     "review.html",
     "review.js",
     "review.css",
@@ -35,7 +38,6 @@ INVOICE_WORDING_ALLOWED = {
     "test_invoice_data.py",
     "test_invoice_extraction.py",
     "test_project_rules.py",
-    "test_export.py",
     "test_api_errors.py",
     "test_frontend.py",
     "main.py",

@@ -17,13 +17,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app import config
 from app.api import (
-    document_export_api,
+    document_delete_api,
     document_review_api,
     document_upload_api,
     document_validation_api,
     frontend_api,
     health_api,
     invoice_data_api,
+    invoice_posting_api,
     ocr_processing_api,
     ocr_results_api,
     page_image_api,
@@ -31,16 +32,35 @@ from app.api import (
 )
 from app.api.error_handlers import register_error_handlers
 from app.logging_setup import setup_logging
-from app.services import ocr_processing_service, storage_service
+from app.services import (
+    document_delete_service,
+    document_metadata_service,
+    invoice_data_service,
+    invoice_extraction_service,
+    ocr_processing_service,
+    storage_service,
+)
 
 setup_logging()
 logger = logging.getLogger("main")
 
+# The OCR layer stays generic: the invoice rules decide which pages were not read completely
+# and are read again from a sharper image (OCR_DETAIL_DPI).
+ocr_processing_service.set_detail_check(
+    lambda document_id, page_result: invoice_extraction_service.needs_more_detail(page_result)
+)
+
+
+# Deleting a document that holds invoices already sent to the database needs an extra confirmation.
+document_delete_service.set_guard(invoice_data_service.delete_warning)
+
 
 @asynccontextmanager
 async def lifespan(app):
+    """Runs when the server starts (prepare storage, resume interrupted OCR jobs) and when it stops."""
     storage_service.ensure_storage_dirs()
     storage_service.cleanup_temp_dir()
+    document_metadata_service.assign_missing_reference_numbers()
     ocr_processing_service.recover_interrupted_jobs()
     logger.info(
         "%s %s started (env=%s, storage=%s, ocr_engine=%s)",
@@ -68,8 +88,9 @@ for api_module in (
     ocr_processing_api,
     ocr_results_api,
     document_review_api,
+    document_delete_api,
     invoice_data_api,
-    document_export_api,
+    invoice_posting_api,
 ):
     app.include_router(api_module.router)
 

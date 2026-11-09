@@ -19,6 +19,7 @@ def get_ocr_engine_label():
 
 
 def render_page(request, template_name, context=None):
+    """Render an HTML template with the values every page needs (app name, version, root path, OCR engine label)."""
     page_context = {
         "app_name": config.APP_NAME,
         "app_version": config.APP_VERSION,
@@ -31,6 +32,7 @@ def render_page(request, template_name, context=None):
 
 @router.get("/")
 def upload_page(request: Request):
+    """Show the Upload page."""
     return render_page(
         request,
         "upload.html",
@@ -45,11 +47,13 @@ def upload_page(request: Request):
 
 @router.get("/review")
 def review_list_page(request: Request):
+    """Show the Review page without a selected document (the document list)."""
     return render_page(request, "review.html", {"document_id": ""})
 
 
 @router.get("/review/{document_id}")
 def review_document_page(request: Request, document_id: str):
+    """Show the Review page for one document."""
     # The ID is only placed in a data attribute (auto-escaped); review.js loads
     # the document through the API, which validates the ID.
     return render_page(request, "review.html", {"document_id": document_id})

@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 def pages_are_reusable(metadata, dpi):
+    """True when the PDF was already converted at this DPI and every page image still exists. Then conversion is skipped."""
     conversion = metadata.get("conversion", {})
     pages = metadata.get("pages", [])
     if conversion.get("status") != "completed" or conversion.get("dpi") != dpi or not pages:
@@ -79,6 +80,32 @@ def render_pdf_pages(pdf_path, output_dir, dpi):
     finally:
         document.close()
     return pages
+
+
+def render_page_image(document_id, page_number, dpi, output_path):
+    """
+    Render one page of a stored PDF at the given DPI into output_path (used to read a page again
+    in more detail). Returns {"width", "height", "dpi"}. Raises ServiceError when it cannot be rendered.
+    """
+    metadata = document_metadata_service.load_metadata(document_id)
+    if metadata.get("document_kind") != "pdf":
+        raise ServiceError("Only PDF pages can be rendered again.", 400, "NOT_A_PDF")
+    pdf_path = storage_service.get_original_dir(document_id) / metadata["stored_filename"]
+    if not pdf_path.is_file():
+        raise ServiceError("The original document file is missing.", 500, "ORIGINAL_MISSING")
+    document = fitz.open(pdf_path, filetype="pdf")
+    try:
+        if not 1 <= page_number <= document.page_count:
+            raise ServiceError(f"Page {page_number} does not exist.", 404, "PAGE_NOT_FOUND")
+        page = document.load_page(page_number - 1)
+        zoom = dpi / 72.0
+        if math.ceil(page.rect.width * zoom) * math.ceil(page.rect.height * zoom) > config.MAX_PAGE_PIXELS:
+            raise ServiceError(f"Page {page_number} is too large to render at {dpi} DPI.", 413, "PAGE_TOO_LARGE")
+        pixmap = page.get_pixmap(dpi=dpi, alpha=False)
+        pixmap.save(str(output_path))
+        return {"width": pixmap.width, "height": pixmap.height, "dpi": dpi}
+    finally:
+        document.close()
 
 
 def convert_pdf_to_images(document_id, raw_dpi):

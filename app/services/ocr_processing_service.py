@@ -39,6 +39,7 @@ _worker_lock = threading.Lock()
 
 
 def package_version(name):
+    """Return the installed version of a Python package, or None if it is not installed."""
     try:
         return package_metadata.version(name)
     except package_metadata.PackageNotFoundError:
@@ -135,6 +136,7 @@ def create_engine():
 
 
 def get_engine():
+    """Return the shared PaddleOCR engine. It is created on first use, so the model is loaded only once."""
     global _engine
     with _engine_lock:
         if _engine is None:
@@ -143,6 +145,7 @@ def get_engine():
 
 
 def engine_summary():
+    """Short description of the OCR engine and models. It is stored with every OCR result."""
     return {
         "name": "PaddleOCR",
         "version": package_version("paddleocr"),
@@ -187,6 +190,7 @@ def queue_ocr(document_id):
 
 
 def finish_job(document_id, error_message=None):
+    """Set the final OCR status of the document: completed, partial (some pages failed) or failed."""
     def apply_final_status(metadata):
         statuses = [page.get("ocr_status") for page in metadata.get("pages", [])]
         failed = statuses.count("failed")
@@ -205,6 +209,7 @@ def finish_job(document_id, error_message=None):
 
 
 def mark_pending_pages_failed(document_id, message):
+    """Mark every page that is still pending as failed, with the given message (used when the OCR engine cannot start)."""
     def apply(metadata):
         for page in metadata.get("pages", []):
             if page.get("ocr_status") == "pending":
@@ -216,7 +221,14 @@ def mark_pending_pages_failed(document_id, message):
 
 def process_page(engine, document_id, page):
     """Run OCR for one page and store the result. Never raises."""
-    image_path = storage_service.get_pages_dir(document_id) / page["image_filename"]
+    result = read_page(engine, document_id, page)
+    ocr_results_service.save_page_result(document_id, page["page_number"], result)
+    return result
+
+
+def read_page(engine, document_id, page, image_path=None):
+    """Run OCR for one page image and return the result (not stored). Never raises."""
+    image_path = image_path or storage_service.get_pages_dir(document_id) / page["image_filename"]
     started = time.time()
     try:
         if not image_path.is_file():
@@ -234,19 +246,109 @@ def process_page(engine, document_id, page):
             else f"OCR failed for this page ({type(error).__name__})."
         )
         result = ocr_results_service.build_failed_result(document_id, page, message, engine_summary())
-
-    ocr_results_service.save_page_result(document_id, page["page_number"], result)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Detail pass: read unclear pages again from a higher-resolution image
+# ---------------------------------------------------------------------------
+_detail_check = None
+
+
+def set_detail_check(check):
+    """
+    check(document_id, page_result) -> True when the content of a page could not be read
+    completely, so the page should be rendered at OCR_DETAIL_DPI and read again.
+    """
+    global _detail_check
+    _detail_check = check
+
+
+def pages_needing_detail(document_id, metadata):
+    """Page numbers of a PDF whose result is incomplete and whose image is below OCR_DETAIL_DPI."""
+    if not config.OCR_DETAIL_DPI or _detail_check is None or metadata.get("document_kind") != "pdf":
+        return []
+    numbers = []
+    for page in metadata.get("pages", []):
+        if page.get("ocr_status") != "completed" or (page.get("dpi") or 0) >= config.OCR_DETAIL_DPI:
+            continue
+        result = ocr_results_service.read_page_result_file(document_id, page["page_number"])
+        if not result:
+            continue
+        try:
+            if _detail_check(document_id, result):
+                numbers.append(page["page_number"])
+        except Exception:
+            logger.exception("Document %s page %s: detail check failed", document_id, page["page_number"])
+    return numbers
+
+
+def read_page_in_detail(engine, document_id, page):
+    """
+    Render the page at OCR_DETAIL_DPI and read it again. The new image and result replace the old
+    ones only when the new reading succeeded and found at least as much text. Returns True if replaced.
+    """
+    from app.services import pdf_processing_service  # imported here: the PDF module is optional for images
+
+    number = page["page_number"]
+    pages_dir = storage_service.get_pages_dir(document_id)
+    temporary = pages_dir / f"detail_{page['image_filename']}"
+    try:
+        rendered = pdf_processing_service.render_page_image(document_id, number, config.OCR_DETAIL_DPI, temporary)
+    except ServiceError as error:
+        logger.warning("Document %s page %s: not rendered for the detail pass: %s", document_id, number, error.message)
+        storage_service.remove_path(temporary)
+        return False
+
+    detailed_page = dict(page, **rendered)
+    old = ocr_results_service.read_page_result_file(document_id, number) or {}
+    result = read_page(engine, document_id, detailed_page, image_path=temporary)
+    if result.get("status") != "completed" or result.get("line_count", 0) < 0.8 * (old.get("line_count") or 0):
+        storage_service.remove_path(temporary)
+        logger.info("Document %s page %s: detail pass kept the first reading", document_id, number)
+        return False
+
+    os.replace(temporary, pages_dir / page["image_filename"])
+    ocr_results_service.save_page_result(document_id, number, result)
+
+    def store(data):
+        target = data["pages"][number - 1]
+        target.update(rendered)
+        target["ocr_status"] = result["status"]
+        target["ocr_error"] = result["error"]
+
+    document_metadata_service.update_metadata(document_id, store)
+    logger.info("Document %s page %s: read again at %s DPI", document_id, number, config.OCR_DETAIL_DPI)
+    return True
+
+
+def run_detail_pass(engine, document_id):
+    """Read every incomplete page of the document again in more detail. Returns the number of pages improved."""
+    metadata = document_metadata_service.load_metadata(document_id)
+    numbers = pages_needing_detail(document_id, metadata)
+    if not numbers:
+        return 0
+    logger.info("Document %s: detail pass for page(s) %s", document_id, numbers)
+    improved = 0
+    for number in numbers:
+        def mark_current(data, page_number=number):
+            data["ocr"]["current_page"] = page_number
+
+        metadata = document_metadata_service.update_metadata(document_id, mark_current)
+        improved += read_page_in_detail(engine, document_id, metadata["pages"][number - 1])
+    return improved
+
+
+def mark_running(metadata):
+    """Set the OCR status to "running" (used with update_metadata by both background jobs)."""
+    metadata["ocr"]["status"] = "running"
+    metadata["ocr"]["started_at"] = storage_service.utc_now()
 
 
 def run_ocr_job(document_id):
     """Background job: OCR every pending page of a document."""
     with _job_lock:
         try:
-            def mark_running(metadata):
-                metadata["ocr"]["status"] = "running"
-                metadata["ocr"]["started_at"] = storage_service.utc_now()
-
             metadata = document_metadata_service.update_metadata(document_id, mark_running)
         except ServiceError as error:
             logger.warning("Document %s: OCR job cancelled: %s", document_id, error.message)
@@ -279,16 +381,33 @@ def run_ocr_job(document_id):
 
             document_metadata_service.update_metadata(document_id, store_page_status)
 
+        run_detail_pass(engine, document_id)
         final = finish_job(document_id)
         logger.info("Document %s: OCR finished with status %s", document_id, final["ocr"]["status"])
 
 
-def worker_loop():
-    """Process queued documents one after another, forever."""
-    while True:
-        document_id = _job_queue.get()
+def run_detail_job(document_id):
+    """Background job: only the detail pass, for a document that was read before."""
+    with _job_lock:
         try:
-            run_ocr_job(document_id)
+            document_metadata_service.update_metadata(document_id, mark_running)
+            engine = get_engine()
+        except Exception as error:
+            message = error.message if isinstance(error, ServiceError) else "The OCR engine could not be started."
+            logger.exception("Document %s: detail pass could not start", document_id)
+            finish_job(document_id, message)
+            return
+        improved = run_detail_pass(engine, document_id)
+        finish_job(document_id)
+        logger.info("Document %s: detail pass improved %d page(s)", document_id, improved)
+
+
+def worker_loop():
+    """Process queued jobs one after another, forever."""
+    while True:
+        kind, document_id = _job_queue.get()
+        try:
+            run_detail_job(document_id) if kind == "detail" else run_ocr_job(document_id)
         except Exception:
             logger.exception("Document %s: unexpected error in the OCR worker", document_id)
         finally:
@@ -296,6 +415,7 @@ def worker_loop():
 
 
 def start_worker():
+    """Start the OCR worker thread if it is not already running."""
     global _worker_thread
     with _worker_lock:
         if _worker_thread is None or not _worker_thread.is_alive():
@@ -308,8 +428,37 @@ def submit_ocr(document_id):
     should_run, summary = queue_ocr(document_id)
     if should_run:
         start_worker()
-        _job_queue.put(document_id)
+        _job_queue.put(("ocr", document_id))
     return should_run, summary
+
+
+def submit_detail_pass(document_id):
+    """
+    Queue the detail pass for a document that was read before (for example before the detail pass
+    existed, or with OCR_DETAIL_DPI turned off). Return (job_submitted, ocr_summary, page_numbers).
+    """
+    metadata = document_metadata_service.load_metadata(document_id)
+    numbers = pages_needing_detail(document_id, metadata)
+    if not numbers:
+        return False, document_metadata_service.build_ocr_summary(metadata), []
+
+    def mark_queued(data):
+        ocr = data.setdefault("ocr", {})
+        if ocr.get("status") in ("queued", "running"):
+            raise ServiceError("OCR is already running for this document.", 409, "OCR_IN_PROGRESS")
+        ocr.update({
+            "status": "queued",
+            "queued_at": storage_service.utc_now(),
+            "started_at": None,
+            "completed_at": None,
+            "current_page": None,
+            "error": None,
+        })
+
+    metadata = document_metadata_service.update_metadata(document_id, mark_queued)
+    start_worker()
+    _job_queue.put(("detail", document_id))
+    return True, document_metadata_service.build_ocr_summary(metadata), numbers
 
 
 def wait_until_idle():
@@ -318,6 +467,7 @@ def wait_until_idle():
 
 
 def get_ocr_status(document_id):
+    """Return the OCR progress of the document and the status of each page. The browser calls this repeatedly."""
     metadata = document_metadata_service.load_metadata(document_id)
     summary = document_metadata_service.build_ocr_summary(metadata)
     summary["document_id"] = document_id

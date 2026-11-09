@@ -74,14 +74,6 @@ def test_upload_page_has_no_size_limit(client):
     assert "maxBytes" not in upload_js
 
 
-def test_export_buttons_present(client):
-    for path in ("/", "/review/" + "0" * 32):
-        html = client.get(path).text
-        assert 'id="export-excel-button"' in html and "Export to Excel" in html
-    base_js = (config.STATIC_DIR / "js" / "base.js").read_text(encoding="utf-8")
-    assert "downloadFile" in base_js
-
-
 def test_footer_shows_ocr_engine(client):
     html = client.get("/").text
     assert "PaddleOCR" in html and "app-footer__engine" in html

@@ -79,6 +79,7 @@ def build_page_result(document_id, page, raw_result, duration_seconds, engine_in
 
 
 def build_failed_result(document_id, page, error_message, engine_info):
+    """Build the stored result for a page where OCR raised an error. It has no text lines."""
     return {
         "document_id": document_id,
         "page_number": page["page_number"],
@@ -99,6 +100,7 @@ def build_failed_result(document_id, page, error_message, engine_info):
 
 
 def save_page_result(document_id, page_number, result):
+    """Save the OCR result of one page as ocr/page_XXXX.json."""
     path = storage_service.get_ocr_dir(document_id) / storage_service.ocr_result_filename(page_number)
     storage_service.write_json_atomic(path, result)
 
@@ -116,6 +118,7 @@ def read_page_result_file(document_id, page_number):
 
 
 def get_page_result(document_id, raw_page_number):
+    """Return the stored OCR result of one page. Raises 404 if OCR has not produced a result yet."""
     metadata = document_metadata_service.load_metadata(document_id)
     page = page_image_service.get_page_record(metadata, raw_page_number)
     result = read_page_result_file(document_id, page["page_number"])

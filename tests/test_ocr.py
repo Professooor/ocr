@@ -165,3 +165,86 @@ def test_interrupted_job_is_recovered_at_startup(client):
     status = client.get(f"/api/documents/{document_id}/ocr/status").json()["data"]
     assert status["status"] == "interrupted"
     assert "Run OCR again" in status["error"]
+
+
+# ---------------------------------------------------------------------------
+# Detail pass: pages that were not read completely are read again from a sharper image
+# ---------------------------------------------------------------------------
+class SharperEngine:
+    """Reads 2 lines from a normal page image and sharp_lines from the higher-resolution one."""
+
+    def __init__(self, sharp_lines=5):
+        self.sharp_lines = sharp_lines
+        self.calls = []
+
+    def predict(self, image_path):
+        self.calls.append(image_path)
+        count = self.sharp_lines if "detail_" in image_path else 2
+        boxes = [[10, 10 + 20 * i, 200, 25 + 20 * i] for i in range(count)]
+        return [{
+            "rec_texts": [f"line {i}" for i in range(count)],
+            "rec_scores": [0.95] * count,
+            "rec_polys": [[[l, t], [r, t], [r, b], [l, b]] for l, t, r, b in boxes],
+            "rec_boxes": boxes,
+        }]
+
+
+def review_pages(client, document_id):
+    return client.get(f"/api/review/documents/{document_id}").json()["data"]["pages"]
+
+
+def page_result(client, document_id, number):
+    return client.get(f"/api/documents/{document_id}/pages/{number}/ocr").json()["data"]
+
+
+def test_unclear_page_is_read_again_from_a_sharper_image(client, monkeypatch):
+    from app import config
+    from app.services import storage_service
+    document_id = upload_text_pdf(client, ["a", "b"], dpi=50)
+    engine = SharperEngine()
+    monkeypatch.setattr(ocr_processing_service, "get_engine", lambda: engine)
+    monkeypatch.setattr(ocr_processing_service, "_detail_check", lambda doc, result: result["page_number"] == 2)
+
+    run_ocr(client, document_id)
+    first, second = review_pages(client, document_id)
+    assert first["dpi"] == 50 and second["dpi"] == config.OCR_DETAIL_DPI
+    assert second["width"] > first["width"]
+    assert page_result(client, document_id, 1)["line_count"] == 2
+    assert page_result(client, document_id, 2)["line_count"] == 5
+    assert any(call.endswith("detail_page_0002.png") for call in engine.calls)
+    assert not list(storage_service.get_pages_dir(document_id).glob("detail_*"))  # no temporary image left
+    assert client.get(f"/api/documents/{document_id}/ocr/status").json()["data"]["status"] == "completed"
+
+
+def test_a_worse_sharp_reading_keeps_the_first_one(client, monkeypatch):
+    from app.services import storage_service
+    document_id = upload_text_pdf(client, ["a"], dpi=50)
+    monkeypatch.setattr(ocr_processing_service, "get_engine", lambda: SharperEngine(sharp_lines=1))
+    monkeypatch.setattr(ocr_processing_service, "_detail_check", lambda doc, result: True)
+
+    run_ocr(client, document_id)
+    assert review_pages(client, document_id)[0]["dpi"] == 50
+    assert page_result(client, document_id, 1)["line_count"] == 2
+    assert not list(storage_service.get_pages_dir(document_id).glob("detail_*"))
+
+
+def test_detail_pass_for_a_document_read_before(client, monkeypatch):
+    from app import config
+    document_id = upload_text_pdf(client, ["a"], dpi=50)
+    monkeypatch.setattr(ocr_processing_service, "get_engine", lambda: SharperEngine())
+    monkeypatch.setattr(ocr_processing_service, "_detail_check", lambda doc, result: False)
+    run_ocr(client, document_id)
+    assert review_pages(client, document_id)[0]["dpi"] == 50
+
+    monkeypatch.setattr(ocr_processing_service, "_detail_check", lambda doc, result: True)
+    monkeypatch.setattr(config, "OCR_DETAIL_DPI", 0)  # turned off
+    off = client.post(f"/api/documents/{document_id}/ocr/detail").json()
+    assert off["data"]["detail_pages"] == [] and off["message"] == "No page needs to be read again."
+
+    monkeypatch.setattr(config, "OCR_DETAIL_DPI", 150)
+    response = client.post(f"/api/documents/{document_id}/ocr/detail")
+    assert response.status_code == 202 and response.json()["data"]["detail_pages"] == [1]
+    ocr_processing_service.wait_until_idle()
+    assert review_pages(client, document_id)[0]["dpi"] == 150
+    # Already sharp: nothing more to do.
+    assert client.post(f"/api/documents/{document_id}/ocr/detail").json()["data"]["detail_pages"] == []

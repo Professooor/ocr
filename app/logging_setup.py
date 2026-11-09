@@ -9,6 +9,7 @@ LOG_FORMAT = "%(asctime)s %(levelname)s [%(name)s] %(message)s"
 
 
 def setup_logging():
+    """Send log messages to the console and to logs/app.log. Safe to call more than once."""
     config.LOG_DIR.mkdir(parents=True, exist_ok=True)
     root_logger = logging.getLogger()
     if getattr(root_logger, "_document_automation_configured", False):

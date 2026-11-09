@@ -1,11 +1,8 @@
-"""Invoice data API: autofill from OCR, review, validation, saving, export."""
-
-import io
+"""Invoice data API: autofill from OCR, review, validation, saving, documents with several invoices."""
 
 import pytest
-from openpyxl import load_workbook
 
-from app.services import ocr_processing_service
+from app.services import invoice_data_service, ocr_processing_service
 from tests.conftest import make_pdf, run_ocr, upload
 from tests.sample_invoice import make_invoice_pdf
 
@@ -69,23 +66,25 @@ def test_data_is_extracted_automatically_after_ocr(client, invoice_document):
     data = get_data(client, invoice_document)
     assert data["status"] == "needs_review"
     assert data["ocr_ready"] is True
-    assert data["values"] == {
+    expected = {key: "" for key in invoice_data_service.FIELD_KEYS}
+    expected.update({
         "vendor_name": "Acme Supplies Ltd",
         "invoice_number": "IVN-10012",
         "invoice_date": "2023-10-15",
         "due_date": "2023-11-14",
-        "po_number": "",
         "currency": "USD",
         "subtotal": "500.00",
+        "sales_tax_rate": "10",  # worked out from tax / subtotal
         "tax": "50.00",
         "total_due": "550.00",
-    }
+    })
+    assert data["values"] == expected
     assert data["extracted"]["invoice_number"]["source"] == {"page": 1, "line": 4}
     assert data["extracted"]["vendor_name"]["needs_check"] is True  # Found without a label
-    assert data["line_items"] == [{
-        "description": "Services", "quantity": "10", "rate": "50.00", "amount": "500.00",
-        "confidence": 0.99, "page": 1,
-    }]
+    item = {key: "" for key in invoice_data_service.LINE_ITEM_KEYS}
+    item.update({"description": "Services", "quantity": "10", "rate": "50.00", "amount": "500.00",
+                 "confidence": 0.99, "page": 1})
+    assert data["line_items"] == [item]
 
 
 def test_before_ocr_the_form_is_empty(client):
@@ -128,6 +127,9 @@ def test_draft_needs_no_mandatory_fields(client, invoice_document):
         ({"tax": "12.12345"}, "tax"),
         ({"currency": "dollars"}, "currency"),
         ({"vendor_name": "x" * 201}, "vendor_name"),
+        ({"further_tax": "zero"}, "further_tax"),
+        ({"sales_tax_rate": "18%"}, "sales_tax_rate"),
+        ({"buyer_address": "x" * 501}, "buyer_address"),
     ],
 )
 def test_invalid_values_are_rejected(client, invoice_document, values, field):
@@ -143,6 +145,24 @@ def test_invalid_line_items_are_rejected(client, invoice_document):
     assert response.json()["error"]["details"][0]["field"] == "line_items.0.rate"
     response = put_data(client, invoice_document, "draft", {}, "not a list")
     assert response.status_code == 422
+
+
+def test_tax_columns_of_line_items_are_saved(client, invoice_document):
+    values = {"vendor_name": "Grandsons Industries", "buyer_name": "Sapphire Textile Mills Limited",
+              "supplier_ntn": "2541416-0", "fbr_invoice_number": "2541416DIWE6L6E417248", "further_tax": "0.00"}
+    items = [{"description": "Label", "hs_code": "5807.9000", "uom": "PCS", "quantity": "9180", "rate": "10.00",
+              "amount": "91800.00", "tax_rate": "18", "sales_tax": "16524.00", "amount_incl_tax": "108324.00"}]
+    data = put_data(client, invoice_document, "draft", values, items).json()["data"]
+    assert data["values"]["buyer_name"] == "Sapphire Textile Mills Limited"
+    assert data["values"]["fbr_invoice_number"] == "2541416DIWE6L6E417248"
+    saved = data["line_items"][0]
+    assert (saved["hs_code"], saved["uom"], saved["tax_rate"], saved["sales_tax"]) == ("5807.9000", "PCS", "18", "16524.00")
+    assert saved["further_tax"] == "" and saved["discount"] == ""
+
+    bad = [dict(items[0], sales_tax="sixteen")]
+    response = put_data(client, invoice_document, "draft", values, bad)
+    assert response.status_code == 422
+    assert response.json()["error"]["details"][0]["field"] == "line_items.0.sales_tax"
 
 
 @pytest.mark.parametrize("payload", [None, [], {"values": {}}, {"status": "approved", "values": {}}, {"status": "draft"}])
@@ -260,24 +280,153 @@ def test_document_summary_shows_review_status(client, invoice_document):
     assert status() == "saved"
 
 
-def test_excel_export_contains_the_corrected_invoice_data(client, invoice_document):
-    values = dict(get_data(client, invoice_document)["values"], vendor_name="Acme Supplies Limited", tax="")
-    items = [{"description": "Services", "quantity": "10", "rate": "50.00", "amount": "500.00"}]
-    put_data(client, invoice_document, "saved", values, items)
+# ---------------------------------------------------------------------------
+# Documents with several invoices
+# ---------------------------------------------------------------------------
+def invoice_page(vendor, number=None, total=None, extra=()):
+    lines = [(vendor, (80, 60, 500, 100))]
+    if number:
+        lines += [("Invoice Number", (769, 317, 897, 334)), (number, (768, 345, 900, 366))]
+    if total:
+        lines += [("Total", (800, 960, 850, 980)), (total, (1000, 960, 1100, 980))]
+    return lines + list(extra)
 
-    workbook = load_workbook(io.BytesIO(client.get(f"/api/documents/{invoice_document}/export/excel").content))
-    assert workbook.sheetnames[0] == "Invoice data"
-    sheet = workbook["Invoice data"]
-    rows = {sheet.cell(row=r, column=1).value: [sheet.cell(row=r, column=c).value for c in (2, 3, 4, 5)] for r in range(5, 14)}
-    assert sheet["B2"].value == "Saved"
-    assert rows["Vendor name"][:2] == ["Acme Supplies Limited", "Edited"]
-    assert rows["Invoice number"][:2] == ["IVN-10012", "Autofilled"]
-    assert rows["Invoice date"][0].strftime("%Y-%m-%d") == "2023-10-15"
-    assert rows["Subtotal"][0] == 500.0
-    assert rows["Tax"][:2] == [None, "Cleared"]
-    assert rows["Total due"][0] == 550.0
-    line_item_row = next(r for r in range(14, 25) if sheet.cell(row=r, column=1).value == "Services")
-    assert [sheet.cell(row=line_item_row, column=c).value for c in (2, 3, 4)] == [10.0, 50.0, 500.0]
+
+# Page 1-2: INV-100 and its terms page. Page 3-4: INV-200 printed on both pages. Page 5: "Page 1 of 1", no number.
+BATCH_PAGES = {
+    1: invoice_page("Acme Supplies Ltd", "INV-100", "$550.00"),
+    2: [("Terms and conditions apply", (80, 100, 600, 130))],
+    3: invoice_page("Bright Paper Co", "INV-200", "$90.00"),
+    4: invoice_page("Bright Paper Co", "INV-200", extra=[("Delivery notes", (80, 400, 300, 430))]),
+    5: invoice_page("Carbon Ink Ltd", total="$40.00", extra=[("Page 1 of 1", (500, 1100, 600, 1120))]),
+}
+
+
+class BatchEngine:
+    """Returns different invoice lines for each page image (page_0001.png, page_0002.png, ...)."""
+
+    def predict(self, image_path):
+        page_number = int(str(image_path).rsplit("page_", 1)[1].split(".")[0])
+        return InvoiceEngine(BATCH_PAGES[page_number]).predict(image_path)
+
+
+@pytest.fixture()
+def batch_document(client, monkeypatch):
+    document_id = upload(client, "batch.pdf", make_pdf(((595, 842),) * 5), dpi=50).json()["data"]["document_id"]
+    monkeypatch.setattr(ocr_processing_service, "get_engine", lambda: BatchEngine())
+    run_ocr(client, document_id)
+    return document_id
+
+
+def get_page(client, document_id, page):
+    response = client.get(f"/api/documents/{document_id}/invoice-data", params={"page": page})
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
+def put_page(client, document_id, page, status, values=None, pages=None):
+    payload = {"status": status, "values": values or {}, "line_items": [], "page": page}
+    if pages is not None:
+        payload["pages"] = pages
+    return client.put(f"/api/documents/{document_id}/invoice-data", json=payload)
+
+
+def page_break(client, document_id, page, starts):
+    return client.post(
+        f"/api/documents/{document_id}/invoice-data/page-break", json={"page": page, "starts_invoice": starts}
+    )
+
+
+def test_the_form_shows_the_invoice_of_the_open_page(client, batch_document):
+    first = get_page(client, batch_document, 2)
+    assert first["invoice"]["pages"] == [1, 2]
+    assert first["invoice"]["index"] == 1
+    assert first["invoice"]["count"] == 3
+    assert first["invoice"]["first_pages"] == [1, 3, 5]
+    assert first["values"]["invoice_number"] == "INV-100"
+    assert first["values"]["total_due"] == "550.00"
+
+    second = get_page(client, batch_document, 4)
+    assert second["invoice"]["pages"] == [3, 4]
+    assert second["values"]["invoice_number"] == "INV-200"
+    assert second["values"]["total_due"] == "90.00"
+
+    third = get_page(client, batch_document, 5)
+    assert third["invoice"]["pages"] == [5]
+    assert third["values"]["total_due"] == "40.00"
+    assert get_page(client, batch_document, 1)["summary"] == {"invoices": 3, "saved": 0, "draft": 0, "posted": 0, "needs_review": 3}
+
+
+def test_each_invoice_is_saved_separately(client, batch_document):
+    values = dict(get_page(client, batch_document, 3)["values"], vendor_name="Bright Paper Company",
+                  invoice_date="2023-10-15", due_date="2023-11-14")
+    response = put_page(client, batch_document, 3, "saved", values, pages=[3, 4])
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["summary"]["saved"] == 1
+
+    assert get_page(client, batch_document, 4)["values"]["vendor_name"] == "Bright Paper Company"
+    first = get_page(client, batch_document, 1)
+    assert first["status"] == "needs_review"
+    assert first["values"]["invoice_number"] == "INV-100"
+
+    listing = client.get("/api/review/documents").json()["data"]
+    item = next(item for item in listing if item["document_id"] == batch_document)
+    assert item["data_status"] == "draft"  # Some, not all, invoices are saved.
+    assert item["data_counts"] == {"invoices": 3, "saved": 1, "draft": 0}
+
+
+def test_save_is_refused_when_the_invoice_pages_changed(client, batch_document):
+    response = put_page(client, batch_document, 3, "draft", {"vendor_name": "X"}, pages=[3])
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "INVOICE_PAGES_CHANGED"
+    assert get_page(client, batch_document, 3)["status"] == "needs_review"
+
+
+def test_page_breaks_can_be_corrected(client, batch_document):
+    data = page_break(client, batch_document, 2, True).json()["data"]
+    assert data["invoice"]["pages"] == [2]
+    assert data["invoice"]["first_pages"] == [1, 2, 3, 5]
+
+    data = page_break(client, batch_document, 3, False).json()["data"]
+    assert data["invoice"]["pages"] == [2, 3, 4]
+    assert data["invoice"]["first_pages"] == [1, 2, 5]
+
+    response = page_break(client, batch_document, 1, False)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_PAGE_BREAK"
+    assert client.post(f"/api/documents/{batch_document}/invoice-data/page-break", json={"page": 2}).status_code == 422
+    assert page_break(client, batch_document, 9, True).status_code == 404
+
+
+def test_a_saved_invoice_keeps_its_pages_when_ocr_changes(client, batch_document):
+    from app.services import ocr_results_service, storage_service
+    assert put_page(client, batch_document, 3, "draft", {"vendor_name": "Kept"}).status_code == 200
+
+    # Page 4 now reads as a different invoice; without the saved draft it would split off.
+    result = ocr_results_service.read_page_result_file(batch_document, 4)
+    result["lines"][2]["text"] = "INV-999"
+    storage_service.write_json_atomic(
+        storage_service.get_ocr_dir(batch_document) / storage_service.ocr_result_filename(4), result
+    )
+    data = get_page(client, batch_document, 4)
+    assert data["invoice"]["pages"] == [3, 4]
+    assert data["values"]["vendor_name"] == "Kept"
+
+
+def test_re_extract_resets_only_the_open_invoice(client, batch_document):
+    put_page(client, batch_document, 1, "draft", {"vendor_name": "Typed on invoice 1"})
+    put_page(client, batch_document, 3, "draft", {"vendor_name": "Typed on invoice 2"})
+    response = client.post(f"/api/documents/{batch_document}/invoice-data/extract", json={"page": 4})
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["values"]["vendor_name"] == "Bright Paper Co"
+    assert get_page(client, batch_document, 1)["values"]["vendor_name"] == "Typed on invoice 1"
+
+
+@pytest.mark.parametrize("page,status,code", [("9", 404, "PAGE_NOT_FOUND"), ("abc", 400, "INVALID_PAGE_NUMBER")])
+def test_invalid_page_is_rejected(client, batch_document, page, status, code):
+    response = client.get(f"/api/documents/{batch_document}/invoice-data", params={"page": page})
+    assert response.status_code == status
+    assert response.json()["error"]["code"] == code
 
 
 @pytest.mark.skipif(not ocr_ready, reason="OCR models are not prepared")

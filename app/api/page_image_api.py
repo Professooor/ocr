@@ -11,11 +11,13 @@ router = APIRouter(prefix="/api/documents", tags=["Page images"])
 
 @router.get("/{document_id}/pages")
 def list_pages(document_id: str):
+    """Return the list of page images of a document."""
     return success(page_image_service.list_pages(document_id))
 
 
 @router.get("/{document_id}/pages/{page_number}/image")
 def get_page_image(document_id: str, page_number: str):
+    """Send one page image (PNG) to the browser."""
     image_path = page_image_service.get_page_image_path(document_id, page_number)
     return FileResponse(
         image_path,

@@ -6,13 +6,31 @@
     <meta name="color-scheme" content="light dark">
     <meta name="description" content="Upload documents, convert PDF pages to images and review PaddleOCR results page by page.">
     <title>{% block title %}{{ app_name }}{% endblock %} | {{ app_name }}</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Cpath d='M11 8h7l5 5v10a1 1 0 0 1-1 1H11a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M13 16h6M13 20h4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%231e3a8a'/%3E%3Cpath d='M11 8h7l5 5v10a1 1 0 0 1-1 1H11a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z' fill='none' stroke='white' stroke-width='2' stroke-linejoin='round'/%3E%3Cpath d='M13 16h6M13 20h4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+    <!-- Sets light or dark mode before the page is drawn, so there is no flash of the wrong theme.
+         It uses the saved choice, otherwise the operating system setting.
+         This is the one inline script on purpose: it must run before the page appears. -->
+    <script>
+        (function () {
+            var theme = null;
+            try { theme = localStorage.getItem("theme"); } catch (error) { theme = null; }
+            if (theme !== "light" && theme !== "dark") {
+                theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+            }
+            document.documentElement.setAttribute("data-theme", theme);
+        })();
+    </script>
     <!-- Shared styles first, then the page's own styles. -->
     <link rel="stylesheet" href="{{ root_path }}/static/css/base.css?v={{ app_version }}">
     {% block page_css %}{% endblock %}
 </head>
-<body class="{% block body_class %}{% endblock %}" data-page="{% block page_name %}{% endblock %}" data-root-path="{{ root_path }}">
-    <!-- Shared SVG icon set. Use: <svg class="icon"><use href="#i-name"></use></svg> -->
+<body
+    class="{% block body_class %}{% endblock %}"
+    data-page="{% block page_name %}{% endblock %}"
+    data-root-path="{{ root_path }}">
+
+    <!-- Icon library. Every icon on every page comes from here.
+         To show one: <svg class="icon" aria-hidden="true"><use href="#i-name"></use></svg> -->
     <svg class="icon-sprite" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
         <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></symbol>
         <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></symbol>
@@ -37,6 +55,9 @@
         <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></symbol>
         <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
         <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></symbol>
+        <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+        <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></symbol>
+        <symbol id="i-monitor" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></symbol>
         <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M19 9h3M19 15h3M2 9h3M2 15h3"/></symbol>
         <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
         <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></symbol>
@@ -45,29 +66,41 @@
         <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1L5 6M10 11v6M14 11v6"/></symbol>
         <symbol id="i-columns" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/></symbol>
         <symbol id="i-pointer" viewBox="0 0 24 24"><path d="m4 3 7 17 2.5-7.5L21 10z"/></symbol>
-        <symbol id="i-sheet" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></symbol>
         <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z"/></symbol>
     </svg>
 
     <a class="skip-link" href="#main-content">Skip to content</a>
 
+    <!-- Top navigation bar: brand, page links and the theme button. -->
     <header class="app-header">
         <div class="app-header__inner">
             <a class="brand" href="{{ root_path }}/">
-                <span class="brand__mark" aria-hidden="true"><svg class="icon"><use href="#i-scan"></use></svg></span>
+                <span class="brand__mark" aria-hidden="true">
+                    <svg class="icon"><use href="#i-scan"></use></svg>
+                </span>
                 <span class="brand__text">
                     <span class="brand__name">{{ app_name }}</span>
                     <span class="brand__tagline">PDF pages &middot; OCR &middot; Review</span>
                 </span>
             </a>
+
+            <!-- Page links (base.js marks the current page using data-nav) -->
             <nav class="app-nav" aria-label="Main navigation">
                 <a class="app-nav__link" href="{{ root_path }}/" data-nav="upload">
-                    <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg><span>Upload</span>
+                    <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg>
+                    <span class="app-nav__label">Import</span>
                 </a>
                 <a class="app-nav__link" href="{{ root_path }}/review" data-nav="review">
-                    <svg class="icon" aria-hidden="true"><use href="#i-eye"></use></svg><span>Document Review</span>
+                    <svg class="icon" aria-hidden="true"><use href="#i-eye"></use></svg>
+                    <span class="app-nav__label">Review Queue</span>
                 </a>
             </nav>
+
+            <!-- Light / dark / system theme button (base.js changes its icon and label) -->
+            <button type="button" class="theme-switch" data-theme-switch
+                    aria-label="Colour theme: follows the system" title="Colour theme: follows the system">
+                <svg class="icon" aria-hidden="true"><use href="#i-monitor"></use></svg>
+            </button>
         </div>
     </header>
 
@@ -79,7 +112,8 @@
         <div class="app-footer__inner">
             <span>{{ app_name }} &middot; v{{ app_version }}</span>
             <span class="app-footer__engine">
-                <svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg>{{ ocr_engine_label }}
+                <svg class="icon" aria-hidden="true"><use href="#i-cpu"></use></svg>
+                {{ ocr_engine_label }}
             </span>
         </div>
     </footer>

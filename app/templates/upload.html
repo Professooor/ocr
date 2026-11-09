@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Upload Document{% endblock %}
+{% block title %}Import{% endblock %}
 {% block page_name %}upload{% endblock %}
 
 {% block page_css %}
@@ -8,16 +8,7 @@
 {% endblock %}
 
 {% block content %}
-<section class="page-header">
-    <div>
-        <p class="eyebrow"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-upload"></use></svg>Document intake</p>
-        <h1 class="page-title">Upload a document</h1>
-        <p class="page-subtitle">
-            Drop a PDF or an image. Every PDF page is converted to an image automatically
-            and read with PaddleOCR, then you can review the text page by page.
-        </p>
-    </div>
-</section>
+<h1 class="visually-hidden">Upload a document</h1>
 
 <div class="upload-layout">
     <!-- Left: file selection and settings -->
@@ -32,20 +23,33 @@
         <form id="upload-form" class="card__body upload-form" novalidate
               data-allowed-extensions="{{ allowed_extensions | join(',') }}">
 
+            <section class="form-section" aria-labelledby="section-document">
+                <h3 class="form-section__label" id="section-document">Document</h3>
             <!-- Drop zone. The real file input stays focusable for keyboard users. -->
             <div class="dropzone" id="dropzone">
                 <input class="dropzone__input" type="file" id="document-file" name="file"
-                       accept="{{ allowed_extensions | join(',') }}" aria-describedby="dropzone-hint">
+                       accept="{{ allowed_extensions | join(',') }}">
                 <label class="dropzone__label" for="document-file">
                     <span class="dropzone__icon" aria-hidden="true">
                         <svg class="icon"><use href="#i-upload"></use></svg>
                     </span>
-                    <span class="dropzone__title">Drag and drop your document here</span>
-                    <span class="dropzone__text">or <span class="dropzone__browse">browse your files</span></span>
-                    <span class="dropzone__hint" id="dropzone-hint">
-                        {{ allowed_extensions | map('replace', '.', '') | map('upper') | join(' · ') }}
-                    </span>
+                    <span class="dropzone__title">Drag and drop a file here</span>
+                    <span class="dropzone__title dropzone__title--drop" aria-hidden="true">Release to upload</span>
+                    <span class="dropzone__text">or <span class="dropzone__browse">browse files</span> from your computer</span>
                 </label>
+            </div>
+
+            <!-- Short "file received" animation shown right after a drop or browse -->
+            <div class="file-loader" id="file-loader" role="status" aria-live="polite" hidden>
+                <div class="busy-overlay__ring file-loader__ring">
+                    <svg class="busy-overlay__arc" viewBox="0 0 100 100" aria-hidden="true">
+                        <circle class="busy-overlay__track" cx="50" cy="50" r="44"></circle>
+                        <circle class="busy-overlay__value" id="file-loader-arc" cx="50" cy="50" r="44"
+                                pathLength="100" stroke-dasharray="0 100"></circle>
+                    </svg>
+                    <span class="busy-overlay__percent file-loader__percent" id="file-loader-percent">0%</span>
+                </div>
+                <p class="file-loader__name" id="file-loader-name"></p>
             </div>
 
             <!-- Selected file -->
@@ -60,40 +64,68 @@
                     <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
                 </button>
             </div>
+            </section>
 
+            <section class="form-section" aria-labelledby="section-quality">
+                <h3 class="form-section__label" id="section-quality">Conversion quality</h3>
             <!-- DPI -->
             <div class="dpi-field" id="dpi-field">
                 <div class="dpi-field__header">
-                    <label class="form-label dpi-field__label" for="pdf-dpi">
-                        <svg class="icon" aria-hidden="true"><use href="#i-sliders"></use></svg>PDF conversion DPI
-                    </label>
+                    <div class="dpi-field__heading">
+                        <span class="dpi-field__badge" aria-hidden="true">
+                            <svg class="icon"><use href="#i-sliders"></use></svg>
+                        </span>
+                        <div class="dpi-field__titles">
+                            <label class="dpi-field__label" for="pdf-dpi">PDF conversion DPI</label>
+                            <span class="dpi-field__quality" id="dpi-quality"></span>
+                        </div>
+                    </div>
                     <div class="dpi-field__value">
-                        <input class="form-input dpi-field__number" type="number" id="pdf-dpi" name="dpi"
+                        <input class="dpi-field__number" type="number" id="pdf-dpi" name="dpi"
                                min="{{ dpi_min }}" max="{{ dpi_max }}" step="1" value="{{ dpi_default }}"
                                inputmode="numeric" required aria-describedby="dpi-hint">
                         <span class="dpi-field__unit">DPI</span>
                     </div>
                 </div>
+
+                <div class="segmented" role="group" aria-label="Quality presets">
+                    <button type="button" class="segmented__option" data-dpi-preset="{{ dpi_default }}" aria-pressed="false">
+                        <span class="segmented__title">Fast</span><span class="segmented__meta">{{ dpi_default }} DPI</span>
+                    </button>
+                    <button type="button" class="segmented__option" data-dpi-preset="150" aria-pressed="false">
+                        <span class="segmented__title">Balanced</span><span class="segmented__meta">150 DPI</span>
+                    </button>
+                    <button type="button" class="segmented__option" data-dpi-preset="{{ dpi_max }}" aria-pressed="false">
+                        <span class="segmented__title">High detail</span><span class="segmented__meta">{{ dpi_max }} DPI</span>
+                    </button>
+                </div>
+
                 <input class="range" type="range" id="pdf-dpi-range"
                        min="{{ dpi_min }}" max="{{ dpi_max }}" step="1" value="{{ dpi_default }}"
                        aria-label="PDF conversion DPI slider">
                 <div class="range-scale" aria-hidden="true">
                     <span>{{ dpi_min }}</span>
+                    <span>100</span>
+                    <span>150</span>
+                    <span>200</span>
+                    <span>250</span>
                     <span>{{ dpi_max }}</span>
                 </div>
-                <p class="form-hint" id="dpi-hint"
-                   data-default-text="Whole number from {{ dpi_min }} to {{ dpi_max }} (default {{ dpi_default }}). Higher DPI gives sharper page images but takes longer.">
-                    Whole number from {{ dpi_min }} to {{ dpi_max }} (default {{ dpi_default }}).
-                    Higher DPI gives sharper page images but takes longer.
-                </p>
-                <p class="dpi-field__estimate" id="dpi-estimate" aria-live="polite"></p>
+                <div class="dpi-field__footer">
+                    <p class="dpi-field__estimate" id="dpi-estimate" aria-live="polite"></p>
+                    <p class="form-hint" id="dpi-hint"
+                       data-default-text="Higher DPI: sharper images, slower processing.">
+                        Higher DPI: sharper images, slower processing.
+                    </p>
+                </div>
             </div>
+            </section>
 
             <div id="upload-message" class="alert" role="alert" hidden></div>
 
             <button type="submit" class="button button--primary button--lg button--block" id="upload-button">
                 <svg class="icon" aria-hidden="true"><use href="#i-scan"></use></svg>
-                <span id="upload-button-text">Upload and process</span>
+                <span id="upload-button-text">Process Document</span>
             </button>
         </form>
     </section>
@@ -112,7 +144,7 @@
                 <li class="timeline__item" data-step="upload">
                     <span class="timeline__marker" data-icon="upload"></span>
                     <div class="timeline__content">
-                        <p class="timeline__title">Upload and validation</p>
+                        <p class="timeline__title">Document intake</p>
                         <p class="timeline__text" data-step-text>File type, content and size are checked.</p>
                         <div class="progress timeline__progress" id="upload-progress" hidden>
                             <div class="progress__bar" id="upload-progress-bar"></div>
@@ -153,19 +185,16 @@
                     <div class="result__item"><dt>Pages</dt><dd data-field="page_count"></dd></div>
                     <div class="result__item"><dt>DPI</dt><dd data-field="dpi"></dd></div>
                     <div class="result__item"><dt>Total time</dt><dd data-field="elapsed"></dd></div>
+                    <div class="result__item result__item--wide"><dt>Reference No.</dt><dd data-field="reference_number" class="text-mono"></dd></div>
                     <div class="result__item result__item--wide"><dt>Document ID</dt><dd data-field="document_id" class="text-mono"></dd></div>
                 </dl>
                 <div class="page-strip" id="page-strip" aria-label="Page images"></div>
             </div>
 
             <a class="button button--primary button--lg button--block" id="review-link" href="#" hidden>
-                <span>Open Document Review</span>
+                <span>Open Review Queue</span>
                 <svg class="icon" aria-hidden="true"><use href="#i-arrow-right"></use></svg>
             </a>
-            <button type="button" class="button button--lg button--block upload-export" id="export-excel-button" hidden>
-                <svg class="icon" aria-hidden="true"><use href="#i-sheet"></use></svg>
-                <span id="export-excel-label">Export to Excel</span>
-            </button>
         </div>
     </section>
 </div>

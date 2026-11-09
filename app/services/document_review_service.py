@@ -12,6 +12,7 @@ from app.services import (
 
 
 def list_review_documents():
+    """Return a summary of every stored document, newest first."""
     return [
         document_metadata_service.build_document_summary(metadata)
         for metadata in document_metadata_service.list_all_metadata()
@@ -19,6 +20,7 @@ def list_review_documents():
 
 
 def get_review_document(document_id):
+    """Return one document summary together with a summary of each of its pages."""
     metadata = document_metadata_service.load_metadata(document_id)
     return {
         "document": document_metadata_service.build_document_summary(metadata),
@@ -30,6 +32,7 @@ def get_review_document(document_id):
 
 
 def get_review_page(document_id, raw_page_number):
+    """Return one page with its OCR result and a short message that explains why there is no text (if that is the case)."""
     metadata = document_metadata_service.load_metadata(document_id)
     page = page_image_service.get_page_record(metadata, raw_page_number)
     result = ocr_results_service.read_page_result_file(document_id, page["page_number"])

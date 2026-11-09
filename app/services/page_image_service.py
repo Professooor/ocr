@@ -81,6 +81,7 @@ def create_pages_from_image(document_id):
 
 
 def get_page_record(metadata, raw_page_number):
+    """Find one page in the document metadata. Raises an error for an invalid page number."""
     pages = metadata.get("pages", [])
     if not pages:
         raise ServiceError("This document has no page images yet.", 409, "PAGES_NOT_READY")
@@ -89,6 +90,7 @@ def get_page_record(metadata, raw_page_number):
 
 
 def list_pages(document_id):
+    """Return the list of page images of a document."""
     metadata = document_metadata_service.load_metadata(document_id)
     return {
         "document_id": document_id,
@@ -102,6 +104,7 @@ def list_pages(document_id):
 
 
 def get_page_image_path(document_id, raw_page_number):
+    """Return the file path of a page image. Raises 404 if the file is missing."""
     metadata = document_metadata_service.load_metadata(document_id)
     page = get_page_record(metadata, raw_page_number)
     image_path = storage_service.get_pages_dir(document_id) / page["image_filename"]

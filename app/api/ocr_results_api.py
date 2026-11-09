@@ -10,9 +10,11 @@ router = APIRouter(prefix="/api/documents", tags=["OCR results"])
 
 @router.get("/{document_id}/ocr/results")
 def get_document_results(document_id: str):
+    """Return the OCR results of all pages of a document."""
     return success(ocr_results_service.get_document_results(document_id))
 
 
 @router.get("/{document_id}/pages/{page_number}/ocr")
 def get_page_result(document_id: str, page_number: str):
+    """Return the OCR result of one page."""
     return success(ocr_results_service.get_page_result(document_id, page_number))

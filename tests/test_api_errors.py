@@ -23,7 +23,6 @@ def document_id(client):
         "/api/documents/{id}/ocr/results",
         "/api/review/documents/{id}",
         "/api/review/documents/{id}/pages/1",
-        "/api/documents/{id}/export/excel",
         "/api/documents/{id}/invoice-data",
     ],
 )
@@ -73,7 +72,7 @@ def test_unknown_route_uses_standard_error_format(client):
 
 
 def test_wrong_method(client):
-    response = client.delete("/api/documents/upload")
+    response = client.put("/api/documents/upload")  # DELETE /api/documents/{id} exists now, so use PUT
     assert response.status_code == 405
     assert response.json()["success"] is False
 

@@ -55,58 +55,6 @@
         return payload.data;
     }
 
-    /** Read the file name from a Content-Disposition header (UTF-8 name preferred). */
-    function filenameFromDisposition(header) {
-        if (!header) {
-            return null;
-        }
-        var utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
-        if (utf8) {
-            try {
-                return decodeURIComponent(utf8[1]);
-            } catch (error) {
-                // Fall back to the plain file name below.
-            }
-        }
-        var plain = /filename="([^"]+)"/i.exec(header);
-        return plain ? plain[1] : null;
-    }
-
-    /**
-     * Download a file from the API and save it with the server's file name.
-     * Server errors are thrown as Error objects (not saved as a file).
-     * Resolves with the saved file name.
-     */
-    async function downloadFile(path, fallbackName) {
-        var response;
-        try {
-            response = await fetch(url(path));
-        } catch (networkError) {
-            throw new Error("Could not reach the server. Check that the application is running.");
-        }
-        if (!response.ok) {
-            var payload = null;
-            try {
-                payload = await response.json();
-            } catch (parseError) {
-                payload = null;
-            }
-            throw apiError(payload, response.status);
-        }
-        var blob = await response.blob();
-        var filename = filenameFromDisposition(response.headers.get("Content-Disposition")) || fallbackName || "download";
-        var objectUrl = URL.createObjectURL(blob);
-        var link = document.createElement("a");
-        link.href = objectUrl;
-        link.download = filename;
-        link.hidden = true;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 30000);
-        return filename;
-    }
-
     /* ---------------- DOM helpers ---------------- */
 
     /** Create an element with an optional class name and text (text is never parsed as HTML). */
@@ -139,13 +87,16 @@
         if (!element) {
             return;
         }
-        element.className = "alert alert--" + type;
+        // Only the alert classes change; the element keeps its own layout classes.
+        element.classList.remove("alert--info", "alert--success", "alert--warning", "alert--error");
+        element.classList.add("alert", "alert--" + type);
         element.textContent = "";
         element.appendChild(icon(ALERT_ICONS[type] || "info"));
         element.appendChild(el("span", null, text));
         element.hidden = false;
     }
 
+    /** Remove a message box from the page. */
     function clearMessage(element) {
         if (!element) {
             return;
@@ -219,6 +170,7 @@
 
     /* ---------------- Formatting ---------------- */
 
+    /** Show a file size in a readable unit (KB, MB, ...). */
     function formatBytes(bytes) {
         if (typeof bytes !== "number" || isNaN(bytes)) {
             return "-";
@@ -233,6 +185,7 @@
         return value.toFixed(index === 0 ? 0 : 1) + " " + units[index];
     }
 
+    /** Show an ISO date and time as readable text. */
     function formatDateTime(isoText) {
         if (!isoText) {
             return "-";
@@ -268,6 +221,7 @@
         return date.toLocaleDateString(undefined, { dateStyle: "medium" });
     }
 
+    /** Show a duration in seconds as readable text. */
     function formatSeconds(seconds) {
         if (typeof seconds !== "number" || isNaN(seconds)) {
             return "-";
@@ -279,6 +233,7 @@
         return minutes + " min " + Math.round(seconds % 60) + " s";
     }
 
+    /** Show a fraction (0 to 1) as a percentage. */
     function formatPercent(fraction) {
         return typeof fraction === "number" ? (fraction * 100).toFixed(1) + "%" : "-";
     }
@@ -297,9 +252,11 @@
         no_text: "No text found",
         needs_review: "Needs review",
         draft: "Draft",
-        saved: "Saved"
+        saved: "Saved",
+        posted: "Posted"
     };
 
+    /** Turn a status code from the API (for example "no_text") into text for the user. */
     function statusLabel(status) {
         return STATUS_LABELS[status] || status || "-";
     }
@@ -353,6 +310,7 @@
 
     /* ---------------- Navigation ---------------- */
 
+    /** Highlight the menu link of the page that is open. */
     function markActiveNavigation() {
         var page = document.body.getAttribute("data-page");
         document.querySelectorAll(".app-nav__link").forEach(function (link) {
@@ -366,11 +324,72 @@
 
     markActiveNavigation();
 
+    /* ---------------- Colour theme (system / light / dark) ---------------- */
+
+    var THEMES = ["system", "light", "dark"];
+    var THEME_TEXT = {
+        system: { icon: "monitor", label: "Colour theme: follows the system" },
+        light: { icon: "sun", label: "Colour theme: light" },
+        dark: { icon: "moon", label: "Colour theme: dark" }
+    };
+
+    /** Read the theme (light or dark) the user chose earlier. */
+    function savedTheme() {
+        try {
+            var value = window.localStorage.getItem("theme");
+            return THEMES.indexOf(value) !== -1 ? value : "system";
+        } catch (error) {
+            return "system";
+        }
+    }
+
+    var systemDark = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+
+    /** Switch between light and dark theme and remember the choice. */
+    function applyTheme(theme) {
+        // The CSS dark colours follow data-theme; "system" resolves to the operating system's choice.
+        var resolved = theme === "system" ? (systemDark && systemDark.matches ? "dark" : "light") : theme;
+        document.documentElement.setAttribute("data-theme", resolved);
+        var button = document.querySelector("[data-theme-switch]");
+        if (button) {
+            var text = THEME_TEXT[theme];
+            button.setAttribute("aria-label", text.label + " (click to change)");
+            button.title = text.label;
+            button.querySelector("use").setAttribute("href", "#i-" + text.icon);
+        }
+    }
+
+    /** Remember and apply a theme choice. */
+    function chooseTheme(theme) {
+        try {
+            window.localStorage.setItem("theme", theme);
+        } catch (error) {
+            // Private window: the choice lasts until the page is reloaded.
+        }
+        applyTheme(theme);
+    }
+
+    applyTheme(savedTheme());
+
+    var themeButton = document.querySelector("[data-theme-switch]");
+    if (themeButton) {
+        themeButton.addEventListener("click", function () {
+            chooseTheme(THEMES[(THEMES.indexOf(savedTheme()) + 1) % THEMES.length]);
+        });
+    }
+
+    if (systemDark && systemDark.addEventListener) {
+        systemDark.addEventListener("change", function () {
+            if (savedTheme() === "system") {
+                applyTheme("system");
+            }
+        });
+    }
+
     window.App = {
         url: url,
         apiRequest: apiRequest,
         apiError: apiError,
-        downloadFile: downloadFile,
         el: el,
         icon: icon,
         showMessage: showMessage,

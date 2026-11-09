@@ -26,6 +26,13 @@
     var dpiRange = document.getElementById("pdf-dpi-range");
     var dpiHint = document.getElementById("dpi-hint");
     var dpiEstimate = document.getElementById("dpi-estimate");
+    var fileLoader = document.getElementById("file-loader");
+    var fileLoaderArc = document.getElementById("file-loader-arc");
+    var fileLoaderPercent = document.getElementById("file-loader-percent");
+    var fileLoaderName = document.getElementById("file-loader-name");
+    var fileLoaderToken = 0;
+    var dpiQuality = document.getElementById("dpi-quality");
+    var dpiPresets = Array.prototype.slice.call(dpiField.querySelectorAll("[data-dpi-preset]"));
     var uploadMessage = document.getElementById("upload-message");
     var uploadButton = document.getElementById("upload-button");
     var uploadButtonText = document.getElementById("upload-button-text");
@@ -40,8 +47,6 @@
     var summary = document.getElementById("document-summary");
     var pageStrip = document.getElementById("page-strip");
     var reviewLink = document.getElementById("review-link");
-    var exportButton = document.getElementById("export-excel-button");
-    var exportLabel = document.getElementById("export-excel-label");
 
     var rules = {
         minDpi: Number(dpiInput.min),
@@ -60,15 +65,18 @@
 
     /* ---------------- Validation (same rules as the backend) ---------------- */
 
+    /** File extension in lower case, including the dot. */
     function getExtension(filename) {
         var index = filename.lastIndexOf(".");
         return index === -1 ? "" : filename.slice(index).toLowerCase();
     }
 
+    /** True when the selected file is a PDF. */
     function isPdf(file) {
         return Boolean(file) && getExtension(file.name) === ".pdf";
     }
 
+    /** Check the DPI field. Returns an error text, or "" when the value is valid. The server checks it again. */
     function validateDpi(rawValue) {
         var text = String(rawValue).trim();
         var message = "DPI must be a whole number from " + rules.minDpi + " to " + rules.maxDpi + ".";
@@ -82,6 +90,7 @@
         return { dpi: dpi };
     }
 
+    /** Check the file type of the selected file. Returns an error text, or "" when it is valid. */
     function validateFile(file) {
         if (!file) {
             return "Please select a document to upload.";
@@ -98,10 +107,13 @@
 
     /* ---------------- File selection ---------------- */
 
+    /** Remember the selected file and update the screen. */
     function selectFile(file) {
         App.clearMessage(uploadMessage);
         var error = validateFile(file);
         if (error) {
+            fileLoaderToken++;
+            fileLoader.hidden = true;
             state.file = null;
             fileInput.value = "";
             renderFilePreview();
@@ -109,10 +121,45 @@
             return;
         }
         state.file = file;
-        renderFilePreview();
+        playFileLoader(file);
     }
 
+    /** Fill the ring from 0 to 100% for the newly selected file, then show its details. */
+    function playFileLoader(file) {
+        var token = ++fileLoaderToken;
+        var duration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 1100;
+        dropzone.hidden = true;
+        filePreview.hidden = true;
+        fileLoader.hidden = false;
+        fileLoaderName.textContent = file.name;
+        uploadButton.disabled = true;
+        var start = performance.now();
+
+        function frame(now) {
+            if (token !== fileLoaderToken) { return; }
+            var t = duration ? Math.min(1, (now - start) / duration) : 1;
+            var eased = 1 - Math.pow(1 - t, 3);
+            var percent = Math.round(eased * 100);
+            fileLoaderArc.setAttribute("stroke-dasharray", percent + " 100");
+            fileLoaderPercent.textContent = percent + "%";
+            if (t < 1) {
+                requestAnimationFrame(frame);
+                return;
+            }
+            setTimeout(function () {
+                if (token !== fileLoaderToken) { return; }
+                fileLoader.hidden = true;
+                uploadButton.disabled = state.busy;
+                renderFilePreview();
+            }, 250);
+        }
+        requestAnimationFrame(frame);
+    }
+
+    /** Forget the selected file and reset the form. */
     function clearFile() {
+        fileLoaderToken++;
+        fileLoader.hidden = true;
         state.file = null;
         fileInput.value = "";
         App.clearMessage(uploadMessage);
@@ -120,6 +167,7 @@
         fileInput.focus();
     }
 
+    /** Show the name, size and type of the selected file. */
     function renderFilePreview() {
         var file = state.file;
         dropzone.hidden = Boolean(file);
@@ -139,25 +187,41 @@
 
     /* ---------------- DPI ---------------- */
 
+    /** Enable the DPI field for PDF files only (images have no DPI setting). */
     function updateDpiAvailability() {
         var applies = !state.file || isPdf(state.file);
         dpiField.classList.toggle("is-disabled", !applies);
         dpiInput.disabled = !applies || state.busy;
         dpiRange.disabled = !applies || state.busy;
+        dpiPresets.forEach(function (button) {
+            button.disabled = !applies || state.busy;
+        });
         dpiHint.textContent = applies
             ? dpiHint.getAttribute("data-default-text")
             : "DPI applies to PDF files only. Images are processed at their original resolution.";
         updateDpiDisplay();
     }
 
+    /** Check the DPI value and show the estimated image size and quality (or the error). */
     function updateDpiDisplay() {
         var check = validateDpi(dpiInput.value);
         dpiInput.classList.toggle("is-invalid", Boolean(check.error));
         if (check.error) {
             dpiEstimate.textContent = check.error;
+            dpiQuality.textContent = "";
+            dpiQuality.removeAttribute("data-level");
+            markPreset(null);
             return;
         }
         var dpi = check.dpi;
+        markPreset(dpi);
+        var level = dpi < 100 ? "fast" : dpi < 200 ? "balanced" : "sharp";
+        dpiQuality.setAttribute("data-level", level);
+        dpiQuality.textContent = {
+            fast: "Fast · lighter images",
+            balanced: "Balanced · clearer text",
+            sharp: "High detail · slower"
+        }[level];
         dpiRange.value = String(dpi);
         var percent = ((dpi - rules.minDpi) / (rules.maxDpi - rules.minDpi)) * 100;
         dpiRange.style.setProperty("--fill", percent + "%");
@@ -165,13 +229,25 @@
         var width = Math.ceil((A4_WIDTH_POINTS * dpi) / 72);
         var height = Math.ceil((A4_HEIGHT_POINTS * dpi) / 72);
         dpiEstimate.textContent = "";
-        dpiEstimate.appendChild(document.createTextNode("An A4 page becomes "));
+        dpiEstimate.appendChild(App.el("span", "dpi-field__estimate-label", "A4 page"));
         dpiEstimate.appendChild(App.el("strong", null, width + " × " + height + " px"));
-        dpiEstimate.appendChild(document.createTextNode(dpi === rules.defaultDpi ? " (default)." : "."));
+        if (dpi === rules.defaultDpi) {
+            dpiEstimate.appendChild(App.el("span", "dpi-field__estimate-tag", "Default"));
+        }
+    }
+
+    /** Highlight the DPI preset button that matches the value. */
+    function markPreset(dpi) {
+        dpiPresets.forEach(function (button) {
+            var active = Number(button.getAttribute("data-dpi-preset")) === dpi;
+            button.classList.toggle("is-active", active);
+            button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
     }
 
     /* ---------------- Drag and drop ---------------- */
 
+    /** True when a drag event carries files (and not, for example, selected text). */
     function hasFiles(event) {
         var types = event.dataTransfer ? event.dataTransfer.types : [];
         return Array.prototype.indexOf.call(types, "Files") !== -1;
@@ -187,12 +263,14 @@
         form.classList.add("is-dragover");
     }
 
+    /** Remove the drop highlight when the file is dragged away. */
     function handleDragLeave(event) {
         if (!form.contains(event.relatedTarget)) {
             form.classList.remove("is-dragover");
         }
     }
 
+    /** Take the dropped file. */
     function handleDrop(event) {
         event.preventDefault();
         form.classList.remove("is-dragover");
@@ -211,6 +289,7 @@
 
     /* ---------------- Processing panel ---------------- */
 
+    /** Set the status badge of the processing panel. */
     function setStatus(status, label) {
         processingStatus.textContent = "";
         if (status) {
@@ -222,6 +301,7 @@
         }
     }
 
+    /** Update one step (upload, conversion, OCR) of the progress list. */
     function setStep(name, stepState, text) {
         var step = panel.querySelector('[data-step="' + name + '"]');
         var marker = step.querySelector(".timeline__marker");
@@ -249,6 +329,7 @@
         textElement.textContent = text || textElement.getAttribute("data-original");
     }
 
+    /** Return the processing panel to its starting state. */
     function resetPanel() {
         ["upload", "convert", "ocr", "review"].forEach(function (name) { setStep(name, null); });
         uploadProgress.hidden = true;
@@ -259,24 +340,26 @@
         pageStrip.textContent = "";
         state.thumbs = {};
         reviewLink.hidden = true;
-        exportButton.hidden = true;
         App.clearMessage(processingMessage);
         setStatus(null);
     }
 
+    /** Disable or enable the form while a document is being processed. */
     function setBusy(busy) {
         state.busy = busy;
         uploadButton.disabled = busy;
         fileInput.disabled = busy;
         fileClear.disabled = busy;
         dropzone.classList.toggle("is-disabled", busy);
-        uploadButtonText.textContent = busy ? "Processing..." : "Upload and process";
+        uploadButtonText.textContent = busy ? "Processing..." : "Process Document";
         updateDpiAvailability();
     }
 
+    /** Show the details of the uploaded document. */
     function showSummary(details) {
         App.fillFields(summary, {
             original_filename: details.original_filename,
+            reference_number: details.reference_number || "-",
             document_id: details.document_id,
             page_count: details.page_count,
             dpi: details.conversion.dpi ? details.conversion.dpi + " DPI" : "Original",
@@ -287,10 +370,12 @@
         reviewLink.href = App.url("/review/" + encodeURIComponent(details.document_id));
     }
 
+    /** Update the elapsed-time counter. */
     function updateElapsed() {
         App.fillFields(summary, { elapsed: App.formatSeconds((Date.now() - state.startedAt) / 1000) });
     }
 
+    /** Draw one small box per page to show conversion and OCR progress. */
     function renderPageStrip(pages) {
         pageStrip.textContent = "";
         state.thumbs = {};
@@ -313,6 +398,7 @@
         }
     }
 
+    /** Colour the page boxes according to the OCR status of each page. */
     function updatePageStrip(status) {
         if (!Array.isArray(status.pages)) {
             return; // The "start OCR" response has no per-page list; the status endpoint has.
@@ -346,6 +432,7 @@
         });
     }
 
+    /** Show OCR progress (current page and number of finished pages). */
     function showOcrProgress(status) {
         var total = status.pages_total || 0;
         var done = status.pages_completed + status.pages_no_text + status.pages_failed;
@@ -366,34 +453,35 @@
         updateElapsed();
     }
 
+    /** Show the final OCR result and the button to open the review screen. */
     function finishOcr(status) {
         setBusy(false);
         updatePageStrip(status);
         updateElapsed();
         ocrProgressBar.style.width = "100%";
         reviewLink.hidden = false;
-        exportButton.hidden = status.status !== "completed" && status.status !== "partial";
         var pagesText = status.pages_total + " page(s) · " + App.formatSeconds((Date.now() - state.startedAt) / 1000);
 
         if (status.status === "completed") {
             setStep("ocr", "done", "Text recognised on every page." + (status.pages_no_text ? " " + status.pages_no_text + " page(s) had no readable text." : ""));
-            setStep("review", "ready", "Ready. Open Document Review to compare pages and text.");
+            setStep("review", "ready", "Ready. Open the Review Queue to compare pages and text.");
             setStatus("completed", "Completed");
             App.toast({ type: "success", title: "Document processed", message: pagesText });
         } else if (status.status === "partial") {
-            setStep("ocr", "failed", status.pages_failed + " page(s) failed. You can retry them from Document Review.");
-            setStep("review", "ready", "Open Document Review to see the results.");
+            setStep("ocr", "failed", status.pages_failed + " page(s) failed. You can retry them from the Review Queue.");
+            setStep("review", "ready", "Open the Review Queue to see the results.");
             setStatus("partial", "Partly completed");
             App.toast({ type: "warning", title: "OCR partly completed", message: status.pages_failed + " page(s) failed." });
         } else {
             setStep("ocr", "failed", status.error || "OCR failed.");
             setStatus("failed", "Failed");
-            App.showMessage(processingMessage, "error", status.error || "OCR failed. See Document Review for details.");
-            App.toast({ type: "error", title: "OCR failed", message: status.error || "See Document Review for details." });
+            App.showMessage(processingMessage, "error", status.error || "OCR failed. See the Review Queue for details.");
+            App.toast({ type: "error", title: "OCR failed", message: status.error || "See the Review Queue for details." });
         }
         reviewLink.focus({ preventScroll: true });
     }
 
+    /** Mark a step as failed and show the error message. */
     function failProcessing(step, message) {
         setBusy(false);
         setStep(step, "failed", message);
@@ -402,6 +490,7 @@
         App.toast({ type: "error", title: "Processing stopped", message: message });
     }
 
+    /** Ask the server for the OCR status every few seconds until OCR is finished. */
     async function pollOcrStatus(documentId) {
         if (state.documentId !== documentId) {
             return; // A newer upload started.
@@ -419,28 +508,6 @@
         } else {
             showOcrProgress(status);
             window.setTimeout(function () { pollOcrStatus(documentId); }, POLL_INTERVAL_MS);
-        }
-    }
-
-    /* ---------------- Excel export ---------------- */
-
-    async function exportExcel() {
-        if (!state.documentId) {
-            return;
-        }
-        exportButton.disabled = true;
-        exportLabel.textContent = "Exporting…";
-        try {
-            var filename = await App.downloadFile(
-                "/api/documents/" + encodeURIComponent(state.documentId) + "/export/excel",
-                "document_ocr.xlsx"
-            );
-            App.toast({ type: "success", title: "Excel file downloaded", message: filename, timeout: 4000 });
-        } catch (error) {
-            App.toast({ type: "error", title: "Export failed", message: error.message });
-        } finally {
-            exportButton.disabled = false;
-            exportLabel.textContent = "Export to Excel";
         }
     }
 
@@ -477,6 +544,7 @@
         });
     }
 
+    /** Upload the document, then follow conversion and OCR until they are finished. */
     async function handleSubmit(event) {
         event.preventDefault();
         if (state.busy) {
@@ -578,12 +646,17 @@
         }
     });
     fileClear.addEventListener("click", clearFile);
-    exportButton.addEventListener("click", exportExcel);
 
     dpiInput.addEventListener("input", updateDpiDisplay);
     dpiRange.addEventListener("input", function () {
         dpiInput.value = dpiRange.value;
         updateDpiDisplay();
+    });
+    dpiPresets.forEach(function (button) {
+        button.addEventListener("click", function () {
+            dpiInput.value = button.getAttribute("data-dpi-preset");
+            updateDpiDisplay();
+        });
     });
 
     ["dragenter", "dragover"].forEach(function (name) {

@@ -2,6 +2,7 @@
 
 import io
 import math
+import re
 
 import fitz
 import pytest
@@ -206,3 +207,39 @@ def test_documents_do_not_overwrite_each_other(client):
     first_page = client.get(f"/api/documents/{first['document_id']}/pages").json()["data"]["pages"][0]
     second_page = client.get(f"/api/documents/{second['document_id']}/pages").json()["data"]["pages"][0]
     assert first_page["width"] != second_page["width"]
+
+
+def test_each_upload_gets_the_next_reference_number(client):
+    first = upload(client, "ref_a.pdf", make_pdf()).json()["data"]
+    second = upload(client, "ref_b.pdf", make_pdf()).json()["data"]
+    pattern = r"^DOC-\d{4}-(\d{4,})$"
+    first_number = int(re.match(pattern, first["reference_number"]).group(1))
+    second_number = int(re.match(pattern, second["reference_number"]).group(1))
+    assert second_number == first_number + 1
+    assert first["reference_number"][4:8] == first["uploaded_at"][:4]
+    # The internal ID is unchanged: still 32 hexadecimal characters.
+    assert re.fullmatch(r"[0-9a-f]{32}", first["document_id"])
+
+
+def test_documents_without_a_reference_number_get_one(client):
+    from app.services import document_metadata_service
+
+    document_id = upload(client, "ref_old.pdf", make_pdf()).json()["data"]["document_id"]
+
+    def forget(metadata):
+        metadata.pop("reference_number", None)
+
+    document_metadata_service.update_metadata(document_id, forget)
+    assert document_metadata_service.assign_missing_reference_numbers() >= 1
+    reference = document_metadata_service.load_metadata(document_id)["reference_number"]
+    assert reference.startswith("DOC-")
+    numbers = [item.get("reference_number") for item in document_metadata_service.list_all_metadata()]
+    assert numbers.count(reference) == 1  # never a number that is already used
+
+
+def test_next_reference_number_counts_per_year():
+    from app.services import document_metadata_service as service
+
+    documents = [{"reference_number": "DOC-2026-0007"}, {"reference_number": "DOC-2025-0042"}, {}]
+    assert service.next_reference_number("2026", documents) == "DOC-2026-0008"
+    assert service.next_reference_number("2027", documents) == "DOC-2027-0001"

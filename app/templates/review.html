@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 
-{% block title %}Invoice Review{% endblock %}
+{% block title %}Review Queue{% endblock %}
 {% block page_name %}review{% endblock %}
-{% block body_class %}{% if document_id %}is-workspace{% endif %}{% endblock %}
+{% block body_class %}{% if document_id %}is-workspace{% else %}has-hero{% endif %}{% endblock %}
 
 {% block page_css %}
 <link rel="stylesheet" href="{{ root_path }}/static/css/review.css?v={{ app_version }}">
 {% endblock %}
 
 {# One text or date field of the invoice form. #}
-{% macro field(key, label, kind, required=False) %}
-<div class="field" data-key="{{ key }}" data-kind="{{ kind }}">
+{% macro field(key, label, kind, required=False, wide=False) %}
+<div class="field{% if wide %} field--wide{% endif %}" data-key="{{ key }}" data-kind="{{ kind }}">
     <label class="field__label" for="f-{{ key }}">{{ label }}{% if required %}<span class="field__required" aria-hidden="true"> *</span>{% endif %}</label>
     <div class="input-wrap">
         <input class="form-input" id="f-{{ key }}" name="{{ key }}" type="{{ 'date' if kind == 'date' else 'text' }}"
-               autocomplete="off" spellcheck="false"{% if required %} aria-required="true"{% endif %}>
+               autocomplete="off" spellcheck="false"{% if kind in ('quantity', 'percent') %} inputmode="decimal"{% endif %}{% if required %} aria-required="true"{% endif %}>
         {% if kind != 'date' %}
         <button type="button" class="input-wrap__clear" aria-label="Clear {{ label }}" tabindex="-1" hidden>
             <svg class="icon icon--sm" aria-hidden="true"><use href="#i-x"></use></svg>
@@ -48,9 +48,7 @@
     <section id="document-list-section" hidden>
         <div class="page-header">
             <div>
-                <p class="eyebrow"><svg class="icon icon--sm" aria-hidden="true"><use href="#i-eye"></use></svg>Invoice review</p>
-                <h1 class="page-title">Processed documents</h1>
-                <p class="page-subtitle">Open a document to check the data read from the invoice and correct anything OCR got wrong.</p>
+                <h1 class="visually-hidden">Processed documents</h1>
             </div>
             <a class="button button--primary" href="{{ root_path }}/">
                 <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg>Upload document
@@ -63,7 +61,7 @@
                     <svg class="icon" aria-hidden="true"><use href="#i-search"></use></svg>
                     <span class="visually-hidden">Search documents</span>
                     <input class="search-field__input" type="search" id="document-search"
-                           placeholder="Search by file name or document ID" autocomplete="off">
+                           placeholder="Search by file name, reference no. or document ID" autocomplete="off">
                 </label>
                 <span class="list-toolbar__count text-muted" id="document-count"></span>
             </div>
@@ -79,7 +77,7 @@
                             <th scope="col" class="doc-table__num">Pages</th>
                             <th scope="col">OCR</th>
                             <th scope="col">Review</th>
-                            <th scope="col"><span class="visually-hidden">Open</span></th>
+                            <th scope="col"><span class="visually-hidden">Delete and open</span></th>
                         </tr>
                     </thead>
                     <tbody id="document-table-body"></tbody>
@@ -128,7 +126,7 @@
                     </div>
                     <div class="viewer__tools">
                         <label class="switch" title="Show the text OCR recognised on the page">
-                            <input type="checkbox" class="switch__input" id="overlay-toggle" checked>
+                            <input type="checkbox" class="switch__input" id="overlay-toggle">
                             <span class="switch__track" aria-hidden="true"></span>
                             <span class="switch__label">Text boxes</span>
                         </label>
@@ -143,6 +141,13 @@
                         </div>
                     </div>
                 </div>
+                <!-- Document summary and "Post all saved" -->
+                <div class="doc-bar" id="doc-bar" hidden>
+                    <p class="doc-bar__counts" id="doc-bar-counts" aria-live="polite"></p>
+                    <button type="button" class="button button--success button--sm" id="post-all" hidden>
+                        <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg><span id="post-all-label">Post all saved</span>
+                    </button>
+                </div>
 
                 <div class="viewer-pane__body">
                     <nav class="thumbs" aria-label="Pages">
@@ -151,7 +156,7 @@
                     <div class="viewer__canvas" id="viewer-canvas">
                         <div class="viewer__page" id="viewer-page">
                             <img id="page-image" alt="">
-                            <svg class="ocr-overlay" id="ocr-overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" aria-hidden="true"></svg>
+                            <svg class="ocr-overlay is-hidden" id="ocr-overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" aria-hidden="true"></svg>
                         </div>
                         <div class="viewer__loading" id="page-loading" hidden><span class="spinner"></span></div>
                         <p class="viewer__message" id="page-image-message" hidden></p>
@@ -173,10 +178,6 @@
                         <span id="invoice-status"></span>
                     </div>
                     <div class="form-pane__actions">
-                        <button type="button" class="button button--sm" id="export-excel-button" hidden
-                                title="Download the invoice data and OCR text as an Excel workbook">
-                            <svg class="icon" aria-hidden="true"><use href="#i-sheet"></use></svg><span id="export-excel-label">Export to Excel</span>
-                        </button>
                         <a class="button button--ghost button--icon" id="close-review" href="{{ root_path }}/review"
                            aria-label="Close and go back to all documents" title="Close">
                             <svg class="icon" aria-hidden="true"><use href="#i-x"></use></svg>
@@ -190,7 +191,8 @@
                                 aria-selected="true" aria-controls="panel-details">
                             <svg class="icon" aria-hidden="true"><use href="#i-file"></use></svg>Invoice details
                         </button>
-                        <button type="button" class="tabs__tab" role="tab" id="tab-ocr"
+                        <!-- Hidden in the interface only; the OCR text panel and its data stay in place. -->
+                        <button type="button" class="tabs__tab" role="tab" id="tab-ocr" hidden
                                 aria-selected="false" aria-controls="panel-ocr" tabindex="-1">
                             <svg class="icon" aria-hidden="true"><use href="#i-scan"></use></svg>OCR text
                         </button>
@@ -213,13 +215,51 @@
                     </div>
 
                     <div id="panel-details" role="tabpanel" aria-labelledby="tab-details">
+                        <!-- Which invoice of the document the open page belongs to -->
+                        <div class="invoice-bar" id="invoice-bar" hidden>
+                            <div class="invoice-bar__text">
+                                <span class="invoice-bar__title" id="invoice-bar-title"></span>
+                                <span class="invoice-bar__pages text-muted" id="invoice-bar-pages"></span>
+                            </div>
+                            <div class="invoice-bar__actions">
+                                <button type="button" class="button button--ghost button--sm" id="split-invoice" hidden
+                                        title="This page is the first page of a new invoice">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-plus"></use></svg>New invoice from this page
+                                </button>
+                                <button type="button" class="button button--ghost button--sm" id="join-invoice" hidden
+                                        title="This page belongs to the invoice on the previous page">
+                                    <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>Join with previous invoice
+                                </button>
+                            </div>
+                        </div>
+
                         <form id="invoice-form" class="invoice-form" novalidate autocomplete="off">
+                            <h3 class="form-section">Supplier</h3>
                             <div class="form-grid">
-                                {{ field("vendor_name", "Vendor Name", "text", True) }}
-                                {{ field("invoice_date", "Invoice Date", "date", True) }}
+                                {{ field("vendor_name", "Supplier Name", "text", True) }}
+                                {{ field("supplier_ntn", "Supplier NTN", "code") }}
+                                {{ field("supplier_strn", "Supplier STRN / GST No.", "code") }}
+                                {{ field("supplier_address", "Supplier Address", "text") }}
+                            </div>
+
+                            <h3 class="form-section">Buyer</h3>
+                            <div class="form-grid">
+                                {{ field("buyer_name", "Buyer Name", "text") }}
+                                {{ field("buyer_ntn", "Buyer NTN", "code") }}
+                                {{ field("buyer_strn", "Buyer STRN / GST No.", "code") }}
+                                {{ field("buyer_address", "Buyer Address", "text") }}
+                            </div>
+
+                            <h3 class="form-section">Invoice</h3>
+                            <div class="form-grid">
                                 {{ field("invoice_number", "Invoice Number", "code", True) }}
+                                {{ field("invoice_date", "Invoice Date", "date", True) }}
+                                {{ field("fbr_invoice_number", "FBR Invoice Number", "code") }}
                                 {{ field("due_date", "Due Date", "date", True) }}
                                 {{ field("po_number", "PO Number", "code") }}
+                                {{ field("dc_number", "DC Number", "code") }}
+                                {{ field("gate_pass_number", "Gate Pass Number", "code") }}
+                                {{ field("contract_number", "Contract Number", "code") }}
                                 <div class="field" data-key="currency" data-kind="select">
                                     <label class="field__label" for="f-currency">Currency</label>
                                     <select class="form-input" id="f-currency" name="currency">
@@ -232,10 +272,16 @@
                                 </div>
                             </div>
 
+                            <h3 class="form-section">Amounts</h3>
                             <div class="form-grid form-grid--three">
-                                {{ money_field("subtotal", "Subtotal") }}
-                                {{ money_field("tax", "Tax") }}
-                                {{ money_field("total_due", "Total Due", True) }}
+                                {{ money_field("subtotal", "Value excl. Tax") }}
+                                {{ money_field("discount", "Discount") }}
+                                {{ field("sales_tax_rate", "Sales Tax %", "percent") }}
+                                {{ money_field("tax", "Sales Tax") }}
+                                {{ money_field("further_tax", "Further Tax") }}
+                                {{ money_field("total_due", "Total incl. Tax", True) }}
+                                {{ field("total_quantity", "Total Quantity", "quantity") }}
+                                {{ field("amount_in_words", "Amount in Words", "text", False, True) }}
                             </div>
                         </form>
 
@@ -252,10 +298,18 @@
                                             <th scope="col" class="line-table__check">
                                                 <input type="checkbox" id="line-select-all" aria-label="Select all line items">
                                             </th>
+                                            <th scope="col" class="line-table__serial">#</th>
                                             <th scope="col" data-col="description">Description</th>
+                                            <th scope="col" data-col="hs_code">HS Code</th>
+                                            <th scope="col" data-col="uom">UOM</th>
                                             <th scope="col" data-col="quantity" class="line-table__num">Quantity</th>
                                             <th scope="col" data-col="rate" class="line-table__num">Rate</th>
-                                            <th scope="col" data-col="amount" class="line-table__num">Amount</th>
+                                            <th scope="col" data-col="amount" class="line-table__num">Value excl. Tax</th>
+                                            <th scope="col" data-col="tax_rate" class="line-table__num">Tax %</th>
+                                            <th scope="col" data-col="sales_tax" class="line-table__num">Sales Tax</th>
+                                            <th scope="col" data-col="further_tax" class="line-table__num">Further Tax</th>
+                                            <th scope="col" data-col="discount" class="line-table__num">Discount</th>
+                                            <th scope="col" data-col="amount_incl_tax" class="line-table__num">Value incl. Tax</th>
                                         </tr>
                                     </thead>
                                     <tbody id="line-body"></tbody>
@@ -278,9 +332,16 @@
                                     </button>
                                     <div class="column-menu__popover" id="column-menu" role="group" aria-label="Visible columns" hidden>
                                         <label class="check"><input type="checkbox" checked disabled><span>Description</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="hs_code" checked><span>HS Code</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="uom" checked><span>UOM</span></label>
                                         <label class="check"><input type="checkbox" data-column-toggle="quantity" checked><span>Quantity</span></label>
                                         <label class="check"><input type="checkbox" data-column-toggle="rate" checked><span>Rate</span></label>
-                                        <label class="check"><input type="checkbox" checked disabled><span>Amount</span></label>
+                                        <label class="check"><input type="checkbox" checked disabled><span>Value excl. Tax</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="tax_rate" checked><span>Tax %</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="sales_tax" checked><span>Sales Tax</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="further_tax"><span>Further Tax</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="discount"><span>Discount</span></label>
+                                        <label class="check"><input type="checkbox" data-column-toggle="amount_incl_tax" checked><span>Value incl. Tax</span></label>
                                     </div>
                                 </div>
                             </div>
@@ -320,6 +381,10 @@
                     <div class="form-pane__buttons">
                         <button type="button" class="button" id="save-draft">Save as draft</button>
                         <button type="button" class="button button--primary" id="save-changes">Save changes</button>
+                        <button type="button" class="button button--success" id="post-invoice" hidden
+                                title="Send this saved invoice to the database. It cannot be changed afterwards.">
+                            <svg class="icon" aria-hidden="true"><use href="#i-upload"></use></svg>Post to database
+                        </button>
                     </div>
                 </footer>
             </aside>

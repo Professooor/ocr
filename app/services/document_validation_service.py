@@ -63,6 +63,7 @@ def validate_dpi(raw_value, allow_missing=True):
 # Page numbers
 # ---------------------------------------------------------------------------
 def validate_page_number(raw_value, page_count):
+    """Return the page number as an int. Raises an error if it is not a whole number, or if the document has fewer pages."""
     text = str(raw_value).strip()
     if not INTEGER_PATTERN.match(text) or int(text) < 1:
         raise ServiceError("Page number must be a whole number of 1 or more.", 400, "INVALID_PAGE_NUMBER")
@@ -80,6 +81,7 @@ def validate_page_number(raw_value, page_count):
 # Files
 # ---------------------------------------------------------------------------
 def get_extension(filename):
+    """Return the lowercase file extension including the dot (for example ".pdf"), or "" if there is none."""
     name = str(filename or "").replace("\\", "/").split("/")[-1]
     if "." not in name:
         return ""
@@ -145,6 +147,7 @@ def validate_file_content(path, extension):
 
 
 def validate_pdf(path):
+    """Check that the PDF opens, has no password and has at least one page. Return the page count."""
     # Open from memory: if MuPDF fails on a damaged file it must not keep a
     # handle on the temporary file (Windows could not delete it otherwise).
     try:
@@ -202,6 +205,7 @@ def validate_image(path):
 
 
 def get_validation_rules():
+    """Return the upload rules (file types, DPI limits) so the upload page can show and check them."""
     extensions = sorted(config.ALLOWED_EXTENSIONS)
     return {
         "allowed_extensions": extensions,
