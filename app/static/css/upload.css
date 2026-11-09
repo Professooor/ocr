@@ -2186,3 +2186,37 @@
         min-height: 300px;
     }
 }
+
+/* Smaller outer box: the same content, less empty space around it. */
+.upload-form .form-section .dropzone .dropzone__label,
+.form-section .file-loader {
+    min-height: 262px;
+    padding: 20px 24px 22px;
+}
+
+.upload-form .form-section .dropzone .dropzone__title {
+    max-width: 460px;
+}
+
+.dropzone__art {
+    margin-bottom: 10px;
+}
+
+.dropzone__or {
+    margin: 12px 0;
+}
+
+@media (max-width: 520px) {
+    .upload-form .form-section .dropzone .dropzone__label,
+    .form-section .file-loader {
+        min-height: 280px;
+        padding: 18px 16px 20px;
+    }
+}
+
+@media (min-width: 521px) {
+    .upload-form .form-section .dropzone .dropzone__label,
+    .form-section .file-loader {
+        min-height: 274px;
+    }
+}
