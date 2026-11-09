@@ -2282,3 +2282,105 @@
     display: inline-flex;
     visibility: hidden;
 }
+
+/* Smaller quality card and Process Document button. */
+.form-section .dpi-field {
+    gap: 8px;
+    padding: 12px 14px 10px;
+    border-radius: 12px;
+}
+
+.form-section .dpi-field__label {
+    font-size: 13.5px;
+}
+
+.form-section .dpi-field__quality {
+    font-size: 11.5px;
+}
+
+.form-section .dpi-field__value {
+    padding: 2px 9px 2px 4px;
+    border-radius: 8px;
+}
+
+.form-section .dpi-field__number {
+    width: 46px;
+    height: 24px;
+    min-height: 24px;
+    font-size: 16px;
+}
+
+.form-section .dpi-field__unit {
+    font-size: 10px;
+}
+
+.segmented {
+    gap: 4px;
+    padding: 3px;
+    border-radius: 10px;
+}
+
+.segmented__option {
+    padding: 5px 6px;
+    border-radius: 8px;
+}
+
+.segmented__title {
+    font-size: 12.5px;
+}
+
+.segmented__meta {
+    font-size: 10.5px;
+}
+
+.form-section .dpi-field .range {
+    height: 4px;
+    margin-top: 2px;
+}
+
+.form-section .dpi-field .range::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    border-width: 2px;
+}
+
+.form-section .dpi-field .range::-moz-range-thumb {
+    width: 11px;
+    height: 11px;
+    border-width: 2px;
+}
+
+.form-section .dpi-field .range-scale {
+    margin-top: -2px;
+    font-size: 11px;
+}
+
+.form-section .dpi-field__footer {
+    padding-top: 7px;
+}
+
+.form-section .dpi-field__estimate,
+.form-section .dpi-field .form-hint {
+    font-size: 11.5px;
+}
+
+.form-section .dpi-field__estimate-tag {
+    padding: 0 7px;
+    font-size: 10.5px;
+}
+
+#upload-button {
+    min-height: 40px;
+    padding: 8px 20px;
+    border-radius: 11px;
+    font-size: 14px;
+}
+
+#upload-button .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.upload-form {
+    gap: 18px;
+}
