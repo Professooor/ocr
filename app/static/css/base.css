@@ -1505,3 +1505,96 @@ table,
 .app-nav__link.is-active .icon {
     color: var(--nav-pill-text);
 }
+
+/* =====================================================================
+   Theme-aware solid buttons (same logic as the header page links)
+   Light: white-to-tint pill with coloured text.
+   Dark: deep translucent pill with white text and a soft glow.
+   The Select document card keeps its own buttons.
+   ===================================================================== */
+:root {
+    --btn-ok-bg: linear-gradient(180deg, #ffffff 0%, #def5ec 100%);
+    --btn-ok-hover-bg: linear-gradient(180deg, #ffffff 0%, #cdeedf 100%);
+    --btn-ok-text: #0b7a57;
+    --btn-ok-border: rgba(15, 138, 99, 0.42);
+    --btn-ok-shadow: inset 0 1px 0 #ffffff, 0 1px 2px rgba(5, 80, 55, 0.12), 0 8px 18px -10px rgba(15, 138, 99, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --btn-ok-bg: linear-gradient(180deg, rgba(52, 211, 153, 0.3) 0%, rgba(15, 138, 99, 0.24) 100%);
+        --btn-ok-hover-bg: linear-gradient(180deg, rgba(52, 211, 153, 0.4) 0%, rgba(15, 138, 99, 0.3) 100%);
+        --btn-ok-text: #ffffff;
+        --btn-ok-border: rgba(52, 211, 153, 0.5);
+        --btn-ok-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 1px rgba(15, 138, 99, 0.14), 0 8px 20px -10px rgba(34, 181, 133, 0.6);
+    }
+}
+
+:root[data-theme="dark"] {
+    --btn-ok-bg: linear-gradient(180deg, rgba(52, 211, 153, 0.3) 0%, rgba(15, 138, 99, 0.24) 100%);
+    --btn-ok-hover-bg: linear-gradient(180deg, rgba(52, 211, 153, 0.4) 0%, rgba(15, 138, 99, 0.3) 100%);
+    --btn-ok-text: #ffffff;
+    --btn-ok-border: rgba(52, 211, 153, 0.5);
+    --btn-ok-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 1px rgba(15, 138, 99, 0.14), 0 8px 20px -10px rgba(34, 181, 133, 0.6);
+}
+
+/* Primary */
+.button--primary:not(#upload-button):not(#file-clear) {
+    border-color: var(--nav-pill-border);
+    background: var(--nav-pill-bg);
+    color: var(--nav-pill-text);
+    box-shadow: var(--nav-pill-shadow);
+}
+
+.button--primary:hover:not(#upload-button):not(#file-clear) {
+    border-color: var(--nav-pill-border);
+    background: var(--nav-pill-hover-bg);
+    color: var(--nav-pill-text);
+    box-shadow: var(--nav-pill-shadow);
+}
+
+.button--primary:active:not(#upload-button):not(#file-clear) {
+    box-shadow: inset 0 2px 4px var(--btn-lo);
+}
+
+.button--primary:focus-visible:not(#upload-button):not(#file-clear) {
+    box-shadow: var(--nav-pill-shadow), 0 0 0 3px var(--primary-ring);
+}
+
+/* Success */
+.button--success:not(#upload-button):not(#file-clear) {
+    border-color: var(--btn-ok-border);
+    background: var(--btn-ok-bg);
+    color: var(--btn-ok-text);
+    box-shadow: var(--btn-ok-shadow);
+}
+
+.button--success:hover:not(#upload-button):not(#file-clear) {
+    border-color: var(--btn-ok-border);
+    background: var(--btn-ok-hover-bg);
+    color: var(--btn-ok-text);
+    box-shadow: var(--btn-ok-shadow);
+}
+
+.button--success:active:not(#upload-button):not(#file-clear) {
+    box-shadow: inset 0 2px 4px var(--btn-lo);
+}
+
+.button--success:focus-visible:not(#upload-button):not(#file-clear) {
+    box-shadow: var(--btn-ok-shadow), 0 0 0 3px var(--primary-ring);
+}
+
+/* The sheen is tinted to the theme instead of plain white */
+.button--primary::after:not(#upload-button):not(#file-clear) {
+    background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--primary-solid) 22%, transparent) 50%, transparent 70%);
+}
+
+.button--success::after:not(#upload-button):not(#file-clear) {
+    background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--success) 22%, transparent) 50%, transparent 70%);
+}
+
+/* Their icons take the text colour */
+.button--primary:not(#upload-button):not(#file-clear) .icon,
+.button--success:not(#upload-button):not(#file-clear) .icon {
+    color: currentColor;
+}
