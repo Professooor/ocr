@@ -95,18 +95,6 @@
                     </div>
                 </div>
 
-                <div class="segmented" role="group" aria-label="Quality presets">
-                    <button type="button" class="segmented__option" data-dpi-preset="{{ dpi_default }}" aria-pressed="false">
-                        <span class="segmented__title">Fast</span><span class="segmented__meta">{{ dpi_default }} DPI</span>
-                    </button>
-                    <button type="button" class="segmented__option" data-dpi-preset="150" aria-pressed="false">
-                        <span class="segmented__title">Balanced</span><span class="segmented__meta">150 DPI</span>
-                    </button>
-                    <button type="button" class="segmented__option" data-dpi-preset="{{ dpi_max }}" aria-pressed="false">
-                        <span class="segmented__title">High detail</span><span class="segmented__meta">{{ dpi_max }} DPI</span>
-                    </button>
-                </div>
-
                 <input class="range" type="range" id="pdf-dpi-range"
                        min="{{ dpi_min }}" max="{{ dpi_max }}" step="1" value="{{ dpi_default }}"
                        aria-label="PDF conversion DPI slider">
