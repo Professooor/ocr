@@ -1220,3 +1220,226 @@ table,
     outline: none;
     box-shadow: 0 0 0 3px var(--primary-ring);
 }
+
+/* =====================================================================
+   Premium buttons (every button except the Select document card):
+   layered gradient, inner highlight, soft coloured glow, lift on hover,
+   press on click, and a light sheen sweeping over solid buttons.
+   ===================================================================== */
+:root {
+    --btn-hi: rgba(255, 255, 255, 0.9);
+    --btn-lo: rgba(17, 27, 46, 0.07);
+    --btn-shadow: 0 1px 2px rgba(17, 27, 46, 0.1), 0 6px 14px -8px rgba(17, 27, 46, 0.28);
+    --btn-shadow-hover: 0 2px 4px rgba(17, 27, 46, 0.12), 0 10px 20px -8px rgba(17, 27, 46, 0.34);
+    --btn-primary-top: #5f90ff;
+    --btn-primary-bottom: #3f6df0;
+    --btn-primary-glow: rgba(71, 118, 245, 0.62);
+    --btn-success-top: #22b585;
+    --btn-success-bottom: #0e8660;
+    --btn-success-glow: rgba(15, 138, 99, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --btn-hi: rgba(255, 255, 255, 0.07);
+        --btn-lo: rgba(0, 0, 0, 0.35);
+        --btn-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 16px -10px rgba(0, 0, 0, 0.7);
+        --btn-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.55), 0 12px 22px -10px rgba(0, 0, 0, 0.8);
+        --btn-primary-glow: rgba(91, 140, 255, 0.5);
+        --btn-success-glow: rgba(34, 181, 133, 0.42);
+    }
+}
+
+:root[data-theme="dark"] {
+    --btn-hi: rgba(255, 255, 255, 0.07);
+    --btn-lo: rgba(0, 0, 0, 0.35);
+    --btn-shadow: 0 1px 2px rgba(0, 0, 0, 0.5), 0 8px 16px -10px rgba(0, 0, 0, 0.7);
+    --btn-shadow-hover: 0 2px 4px rgba(0, 0, 0, 0.55), 0 12px 22px -10px rgba(0, 0, 0, 0.8);
+    --btn-primary-glow: rgba(91, 140, 255, 0.5);
+    --btn-success-glow: rgba(34, 181, 133, 0.42);
+}
+
+/* Base: a raised glass-like surface */
+.button:not(#upload-button):not(#file-clear) {
+    position: relative;
+    overflow: hidden;
+    min-height: 40px;
+    padding: 8px 18px;
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+    color: var(--text);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    box-shadow: inset 0 1px 0 var(--btn-hi), var(--btn-shadow);
+    transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease), background 0.18s, border-color 0.18s, filter 0.18s, color 0.18s;
+}
+
+.button:hover:not(#upload-button):not(#file-clear) {
+    transform: translateY(-1px);
+    border-color: var(--primary-solid);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--primary-soft) 100%);
+    box-shadow: inset 0 1px 0 var(--btn-hi), var(--btn-shadow-hover);
+}
+
+.button:active:not(#upload-button):not(#file-clear) {
+    transform: translateY(0) scale(0.985);
+    box-shadow: inset 0 1px 2px var(--btn-lo);
+}
+
+.button:focus-visible:not(#upload-button):not(#file-clear) {
+    outline: none;
+    box-shadow: inset 0 1px 0 var(--btn-hi), 0 0 0 3px var(--primary-ring);
+}
+
+/* Primary: deep blue gradient, glow, sheen */
+.button--primary:not(#upload-button):not(#file-clear) {
+    border-color: rgba(18, 42, 140, 0.35);
+    background: linear-gradient(180deg, var(--btn-primary-top) 0%, var(--btn-primary-bottom) 100%);
+    color: #ffffff;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.34),
+        inset 0 -1px 0 rgba(0, 0, 20, 0.16),
+        0 1px 2px rgba(25, 50, 150, 0.4),
+        0 10px 20px -9px var(--btn-primary-glow);
+}
+
+.button--primary:hover:not(#upload-button):not(#file-clear) {
+    border-color: rgba(18, 42, 140, 0.45);
+    background: linear-gradient(180deg, #6c9aff 0%, #4a77f5 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.4),
+        inset 0 -1px 0 rgba(0, 0, 20, 0.16),
+        0 2px 4px rgba(25, 50, 150, 0.4),
+        0 14px 26px -9px var(--btn-primary-glow);
+}
+
+.button--primary:active:not(#upload-button):not(#file-clear) {
+    box-shadow: inset 0 2px 4px rgba(0, 0, 30, 0.28), 0 4px 10px -6px var(--btn-primary-glow);
+}
+
+.button--primary:focus-visible:not(#upload-button):not(#file-clear) {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 0 0 3px var(--primary-ring);
+}
+
+/* Success: the same treatment in green */
+.button--success:not(#upload-button):not(#file-clear) {
+    border-color: rgba(6, 80, 55, 0.35);
+    background: linear-gradient(180deg, var(--btn-success-top) 0%, var(--btn-success-bottom) 100%);
+    color: #ffffff;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        inset 0 -1px 0 rgba(0, 30, 15, 0.18),
+        0 1px 2px rgba(5, 80, 55, 0.4),
+        0 10px 20px -9px var(--btn-success-glow);
+}
+
+.button--success:hover:not(#upload-button):not(#file-clear) {
+    border-color: rgba(6, 80, 55, 0.45);
+    background: linear-gradient(180deg, #2cc395 0%, #109469 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.36),
+        inset 0 -1px 0 rgba(0, 30, 15, 0.18),
+        0 2px 4px rgba(5, 80, 55, 0.4),
+        0 14px 26px -9px var(--btn-success-glow);
+    filter: none;
+}
+
+.button--success:active:not(#upload-button):not(#file-clear) {
+    box-shadow: inset 0 2px 4px rgba(0, 30, 15, 0.3), 0 4px 10px -6px var(--btn-success-glow);
+}
+
+/* Sheen that sweeps across solid buttons on hover */
+.button--primary::after:not(#upload-button):not(#file-clear),
+.button--success::after:not(#upload-button):not(#file-clear) {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%);
+    transform: translateX(-130%);
+    transition: transform 0.7s var(--ease);
+    pointer-events: none;
+}
+
+.button--primary:hover::after:not(#upload-button):not(#file-clear),
+.button--success:hover::after:not(#upload-button):not(#file-clear) {
+    transform: translateX(130%);
+}
+
+/* Ghost: invisible until hovered, then a soft glass chip */
+.button--ghost:not(#upload-button):not(#file-clear) {
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-2);
+    box-shadow: none;
+}
+
+.button--ghost:hover:not(#upload-button):not(#file-clear) {
+    border-color: var(--border);
+    background: var(--soft);
+    color: var(--text);
+    box-shadow: inset 0 1px 0 var(--btn-hi);
+    transform: translateY(0);
+}
+
+.button--ghost:active:not(#upload-button):not(#file-clear) {
+    background: var(--soft-hover);
+    box-shadow: none;
+}
+
+/* Sizes */
+.button--sm:not(#upload-button):not(#file-clear) {
+    min-height: 32px;
+    padding: 5px 12px;
+    border-radius: 10px;
+}
+
+.button--icon:not(#upload-button):not(#file-clear) {
+    width: 36px;
+    min-height: 36px;
+    padding: 0;
+    border-radius: 11px;
+}
+
+/* Disabled: flat and quiet, no glow, no sheen */
+.button:disabled:not(#upload-button):not(#file-clear),
+.button[aria-disabled="true"]:not(#upload-button):not(#file-clear) {
+    opacity: 0.5;
+    transform: none;
+    filter: saturate(0.6);
+    box-shadow: none;
+}
+
+.button--primary:disabled::after:not(#upload-button):not(#file-clear),
+.button--success:disabled::after:not(#upload-button):not(#file-clear) {
+    display: none;
+}
+
+/* Round theme switch gets the same raised look */
+.theme-switch {
+    border-color: var(--border-strong);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+    box-shadow: inset 0 1px 0 var(--btn-hi), var(--btn-shadow);
+    transition: transform 0.25s var(--ease), box-shadow 0.18s var(--ease), border-color 0.18s, color 0.18s;
+}
+
+.theme-switch:hover {
+    border-color: var(--primary-solid);
+    background: linear-gradient(180deg, var(--surface) 0%, var(--primary-soft) 100%);
+    color: var(--primary);
+    box-shadow: inset 0 1px 0 var(--btn-hi), var(--btn-shadow-hover);
+    transform: translateY(-1px) rotate(12deg);
+}
+
+.theme-switch:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-ring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .button:not(#upload-button):not(#file-clear),
+    .button:not(#upload-button):not(#file-clear)::after,
+    .theme-switch {
+        transition: none;
+    }
+}
