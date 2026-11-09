@@ -2026,3 +2026,163 @@
         font-size: 12.5px;
     }
 }
+
+/* =====================================================================
+   Drop zone: folder illustration, "OR" divider and a Browse files button
+   ===================================================================== */
+.upload-form .form-section .dropzone .dropzone__label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    min-height: 270px;
+    padding: 28px 24px 30px;
+    text-align: center;
+}
+
+.dropzone__art {
+    width: 118px;
+    height: 102px;
+    margin-bottom: 14px;
+    overflow: visible;
+}
+
+.dz-folder-back { fill: #3441b5; }
+.dz-folder-front { fill: #4457ff; }
+.dz-paper--1 { fill: #d3d8e2; }
+.dz-paper--2 { fill: #eceff5; }
+.dz-paper--3 { fill: #ffffff; }
+
+.dz-papers {
+    transition: transform 0.3s var(--ease);
+}
+
+.dz-folder-front {
+    transition: transform 0.3s var(--ease);
+    transform-origin: 22px 112px;
+}
+
+/* Hover: papers rise a little. Drag over: the folder opens and the papers lift out. */
+.dropzone:hover .dz-papers {
+    transform: translateY(-5px);
+}
+
+.upload-form.is-dragover .dz-papers {
+    transform: translateY(-13px);
+}
+
+.upload-form.is-dragover .dz-folder-front {
+    transform: rotate(-4deg);
+}
+
+.upload-form .form-section .dropzone .dropzone__title {
+    max-width: 330px;
+    color: var(--text-2);
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.4;
+    letter-spacing: -0.005em;
+}
+
+.upload-form .form-section .dropzone .dropzone__title--drop {
+    color: var(--primary);
+}
+
+.dropzone__or {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 230px;
+    max-width: 100%;
+    margin: 16px 0;
+    color: var(--muted);
+    font-size: 14px;
+    letter-spacing: 0.04em;
+}
+
+.dropzone__or::before,
+.dropzone__or::after {
+    content: "";
+    flex: 1;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--border-strong);
+}
+
+.dropzone__button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 230px;
+    padding: 13px 34px;
+    border-radius: 12px;
+    background: var(--primary-solid);
+    color: var(--on-primary);
+    font-size: 16px;
+    font-weight: 700;
+    box-shadow: 0 8px 20px -10px var(--primary-solid);
+    transition: background-color 0.15s, transform 0.15s var(--ease), box-shadow 0.15s;
+}
+
+.dropzone:hover .dropzone__button,
+.dropzone:focus-within .dropzone__button {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+}
+
+/* While a file is held over the zone, only the illustration and "Release to upload" stay. */
+.upload-form.is-dragover .dropzone__or,
+.upload-form.is-dragover .dropzone__button {
+    display: none;
+}
+
+.upload-form .form-section .dropzone,
+.form-section .file-loader {
+    border-radius: 18px;
+}
+
+.form-section .file-loader {
+    min-height: 270px;
+}
+
+@media (max-width: 520px) {
+    .upload-form .form-section .dropzone .dropzone__label {
+        min-height: 240px;
+        padding: 22px 16px 24px;
+    }
+
+    .dropzone__button {
+        min-width: 0;
+        width: 100%;
+        max-width: 260px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dz-papers,
+    .dz-folder-front,
+    .dropzone__button {
+        transition: none;
+    }
+}
+
+/* The earlier two-column layout set align-self:end on the title; centre it in the column layout. */
+.upload-form .form-section .dropzone .dropzone__title,
+.upload-form .form-section .dropzone .dropzone__text {
+    align-self: center;
+    text-align: center;
+}
+
+/* Keep the drop zone the same height while a file is dragged over it, so the form below does not jump. */
+.upload-form .form-section .dropzone .dropzone__label,
+.form-section .file-loader {
+    min-height: 330px;
+}
+
+@media (max-width: 520px) {
+    .upload-form .form-section .dropzone .dropzone__label,
+    .form-section .file-loader {
+        min-height: 300px;
+    }
+}

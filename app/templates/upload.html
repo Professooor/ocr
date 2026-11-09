@@ -30,12 +30,19 @@
                 <input class="dropzone__input" type="file" id="document-file" name="file"
                        accept="{{ allowed_extensions | join(',') }}">
                 <label class="dropzone__label" for="document-file">
-                    <span class="dropzone__icon" aria-hidden="true">
-                        <svg class="icon"><use href="#i-upload"></use></svg>
-                    </span>
-                    <span class="dropzone__title">Drag and drop a file here</span>
+                    <svg class="dropzone__art" viewBox="0 0 150 130" aria-hidden="true">
+                        <path class="dz-folder-back" d="M20 14h42l8 8h42a6 6 0 0 1 6 6v76a6 6 0 0 1-6 6H26a6 6 0 0 1-6-6z"/>
+                        <g class="dz-papers">
+                            <rect class="dz-paper dz-paper--1" x="28" y="24" width="50" height="64" rx="4" transform="rotate(-11 53 56)"/>
+                            <rect class="dz-paper dz-paper--2" x="46" y="18" width="54" height="66" rx="4" transform="rotate(-3 73 51)"/>
+                            <rect class="dz-paper dz-paper--3" x="64" y="24" width="48" height="60" rx="4" transform="rotate(6 88 54)"/>
+                        </g>
+                        <path class="dz-folder-front" d="M22 56a6 6 0 0 1 6-6h76a6 6 0 0 1 6 8l-10 46a6 6 0 0 1-6 6H30a8 8 0 0 1-8-8z"/>
+                    </svg>
+                    <span class="dropzone__title">Drag your document here to start uploading.</span>
                     <span class="dropzone__title dropzone__title--drop" aria-hidden="true">Release to upload</span>
-                    <span class="dropzone__text">or <span class="dropzone__browse">browse files</span> from your computer</span>
+                    <span class="dropzone__or" aria-hidden="true">OR</span>
+                    <span class="dropzone__button">Browse files</span>
                 </label>
             </div>
 
