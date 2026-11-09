@@ -2220,3 +2220,65 @@
         min-height: 274px;
     }
 }
+
+/* Smaller drop zone overall (box and content). */
+.upload-form .form-section .dropzone .dropzone__label,
+.form-section .file-loader {
+    min-height: 0;
+    padding: 14px 20px 16px;
+}
+
+.form-section .file-loader {
+    min-height: 200px;
+}
+
+.dropzone__art {
+    width: 84px;
+    height: 73px;
+    margin-bottom: 6px;
+}
+
+.upload-form .form-section .dropzone .dropzone__title {
+    max-width: 420px;
+    font-size: 15px;
+}
+
+.dropzone__or {
+    width: 190px;
+    margin: 8px 0;
+    font-size: 12.5px;
+}
+
+.dropzone__button {
+    min-width: 190px;
+    padding: 9px 26px;
+    border-radius: 10px;
+    font-size: 14px;
+}
+
+.upload-form .form-section .dropzone {
+    border-radius: 14px;
+}
+
+@media (max-width: 520px) {
+    .upload-form .form-section .dropzone .dropzone__label {
+        padding: 14px 14px 16px;
+    }
+
+    .dropzone__button {
+        min-width: 0;
+        width: 100%;
+        max-width: 210px;
+    }
+}
+
+/* Drag over: hide "OR" and the button but keep their space, so the box does not shrink. */
+.upload-form.is-dragover .dropzone__or {
+    display: flex;
+    visibility: hidden;
+}
+
+.upload-form.is-dragover .dropzone__button {
+    display: inline-flex;
+    visibility: hidden;
+}
