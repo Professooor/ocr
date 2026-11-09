@@ -2384,3 +2384,25 @@
 .upload-form {
     gap: 18px;
 }
+
+/* Smaller Process Document button: natural width, right aligned (full width on phones). */
+#upload-button {
+    align-self: flex-end;
+    width: auto;
+    min-height: 36px;
+    padding: 6px 20px;
+    border-radius: 10px;
+    font-size: 13.5px;
+}
+
+#upload-button .icon {
+    width: 15px;
+    height: 15px;
+}
+
+@media (max-width: 520px) {
+    #upload-button {
+        align-self: stretch;
+        width: 100%;
+    }
+}
