@@ -1989,3 +1989,24 @@
     border-style: solid;
     border-color: var(--primary-solid);
 }
+
+/* FINDING-002: on a phone the icon beside the text left only ~130px, so "Drag and drop a file here"
+   wrapped to three lines. Stack the icon above the text and centre it. */
+@media (max-width: 520px) {
+    .upload-form > .dropzone .dropzone__label,
+    .dropzone__label,
+    .form-section .dropzone__label {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "icon"
+            "title"
+            "text";
+        justify-items: center;
+        row-gap: 4px;
+        text-align: center;
+    }
+
+    .form-section .dropzone__icon {
+        margin-bottom: 6px;
+    }
+}
