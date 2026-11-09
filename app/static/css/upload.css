@@ -2010,3 +2010,19 @@
         margin-bottom: 6px;
     }
 }
+
+/* FINDING-003: "High detail" wrapped to two lines in the quality presets on a phone, making that
+   tile taller than the other two. Keep titles on one line and tighten the tiles. */
+.segmented__title {
+    white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+    .segmented__option {
+        padding: 9px 4px;
+    }
+
+    .segmented__title {
+        font-size: 12.5px;
+    }
+}
