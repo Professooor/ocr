@@ -1177,3 +1177,46 @@ table,
         display: none;
     }
 }
+
+/* =====================================================================
+   Page links styled like the "Browse files" button:
+   solid blue active tab, white bold text, soft glow, rounded corners.
+   ===================================================================== */
+.app-nav {
+    gap: 4px;
+    padding: 4px;
+    border-radius: 14px;
+}
+
+.app-nav__link {
+    height: 36px;
+    padding: 0 18px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.app-nav__link:hover:not(.is-active) {
+    background: var(--primary-soft);
+    color: var(--header-text);
+}
+
+.app-nav__link.is-active,
+.app-nav__link.is-active:hover {
+    background: var(--primary-solid);
+    color: var(--on-primary);
+    font-weight: 700;
+    box-shadow: 0 8px 20px -10px var(--primary-solid);
+}
+
+.app-nav__link.is-active:hover {
+    background: var(--primary-hover);
+}
+
+.app-nav__link.is-active .icon {
+    color: var(--on-primary);
+}
+
+.app-nav__link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--primary-ring);
+}
