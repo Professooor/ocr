@@ -1443,3 +1443,65 @@ table,
         transition: none;
     }
 }
+
+/* =====================================================================
+   Page links follow the theme
+   Light: a white-to-blue pill with blue text. Dark: a deep translucent
+   blue pill with white text and a soft blue glow.
+   ===================================================================== */
+:root {
+    --nav-pill-bg: linear-gradient(180deg, #ffffff 0%, #e9f0ff 100%);
+    --nav-pill-hover-bg: linear-gradient(180deg, #ffffff 0%, #dde8ff 100%);
+    --nav-pill-text: #2f5fe0;
+    --nav-pill-border: rgba(71, 118, 245, 0.38);
+    --nav-pill-shadow: inset 0 1px 0 #ffffff, 0 1px 2px rgba(40, 70, 170, 0.12), 0 8px 18px -10px rgba(71, 118, 245, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --nav-pill-bg: linear-gradient(180deg, rgba(110, 155, 255, 0.3) 0%, rgba(71, 118, 245, 0.2) 100%);
+        --nav-pill-hover-bg: linear-gradient(180deg, rgba(110, 155, 255, 0.38) 0%, rgba(71, 118, 245, 0.26) 100%);
+        --nav-pill-text: #ffffff;
+        --nav-pill-border: rgba(110, 155, 255, 0.5);
+        --nav-pill-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 1px rgba(71, 118, 245, 0.12), 0 8px 20px -10px rgba(91, 140, 255, 0.6);
+    }
+}
+
+:root[data-theme="dark"] {
+    --nav-pill-bg: linear-gradient(180deg, rgba(110, 155, 255, 0.3) 0%, rgba(71, 118, 245, 0.2) 100%);
+    --nav-pill-hover-bg: linear-gradient(180deg, rgba(110, 155, 255, 0.38) 0%, rgba(71, 118, 245, 0.26) 100%);
+    --nav-pill-text: #ffffff;
+    --nav-pill-border: rgba(110, 155, 255, 0.5);
+    --nav-pill-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 0 0 1px rgba(71, 118, 245, 0.12), 0 8px 20px -10px rgba(91, 140, 255, 0.6);
+}
+
+.app-nav {
+    border: 1px solid var(--border);
+    background: var(--soft);
+}
+
+.app-nav__link {
+    border: 1px solid transparent;
+    color: var(--header-muted);
+}
+
+.app-nav__link:hover:not(.is-active) {
+    background: var(--soft-hover);
+    color: var(--header-text);
+}
+
+.app-nav__link.is-active,
+.app-nav__link.is-active:hover {
+    border-color: var(--nav-pill-border);
+    background: var(--nav-pill-bg);
+    color: var(--nav-pill-text);
+    box-shadow: var(--nav-pill-shadow);
+}
+
+.app-nav__link.is-active:hover {
+    background: var(--nav-pill-hover-bg);
+}
+
+.app-nav__link.is-active .icon {
+    color: var(--nav-pill-text);
+}
