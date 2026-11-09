@@ -1966,3 +1966,26 @@
         display: none;
     }
 }
+
+/* FINDING-001: the drop zone edge was transparent (later background rules replaced the dashed
+   gradient border). Use a real dashed border that is visible in light and dark mode. */
+.dropzone,
+.dropzone:hover,
+.dropzone:focus-within,
+.upload-form.is-dragover .dropzone {
+    animation: none;
+}
+
+.dropzone {
+    border: 1.5px dashed color-mix(in srgb, var(--muted) 55%, var(--surface-2));
+}
+
+.dropzone:hover,
+.dropzone:focus-within {
+    border-color: var(--primary-solid);
+}
+
+.upload-form.is-dragover .dropzone {
+    border-style: solid;
+    border-color: var(--primary-solid);
+}
