@@ -108,6 +108,60 @@ def render_page_image(document_id, page_number, dpi, output_path):
         document.close()
 
 
+def render_into_staging(document_id, pdf_path, staging_dir, dpi):
+    """Render the PDF into the staging folder. On any failure the staging folder is removed."""
+    try:
+        return render_pdf_pages(pdf_path, staging_dir, dpi)
+    except ServiceError:
+        storage_service.remove_path(staging_dir)
+        raise
+    except Exception as error:
+        storage_service.remove_path(staging_dir)
+        logger.exception("Document %s: PDF conversion failed", document_id)
+        raise ServiceError(
+            "The PDF could not be converted to images. The file may be damaged.",
+            422,
+            "CONVERSION_FAILED",
+        ) from error
+
+
+def replace_pages(document_id, staging_dir, pages, dpi, duration):
+    """Swap the staged images in for the old ones and reset OCR. Updates the metadata under its lock."""
+
+    def apply_conversion(data):
+        # Runs under the metadata lock, so OCR cannot be queued while the
+        # page folders are swapped, and two conversions cannot swap at once.
+        if data.get("ocr", {}).get("status") in ("queued", "running"):
+            raise ServiceError(
+                "OCR started for this document during conversion. Try again when it finishes.",
+                409,
+                "OCR_IN_PROGRESS",
+            )
+        # Every page succeeded: replace old page images and old OCR results.
+        storage_service.remove_path(storage_service.get_pages_dir(document_id))
+        os.replace(staging_dir, storage_service.get_pages_dir(document_id))
+        ocr_dir = storage_service.get_ocr_dir(document_id)
+        storage_service.remove_path(ocr_dir)
+        ocr_dir.mkdir(parents=True, exist_ok=True)
+
+        data["pages"] = pages
+        data["conversion"] = {
+            "status": "completed",
+            "source": "pdf_render",
+            "dpi": dpi,
+            "completed_at": storage_service.utc_now(),
+            "duration_seconds": duration,
+            "error": None,
+        }
+        data["ocr"] = {"status": "not_started"}
+
+    try:
+        document_metadata_service.update_metadata(document_id, apply_conversion)
+    finally:
+        if staging_dir.exists():
+            storage_service.remove_path(staging_dir)
+
+
 def convert_pdf_to_images(document_id, raw_dpi):
     """
     Convert a stored PDF document into page images.
@@ -131,56 +185,12 @@ def convert_pdf_to_images(document_id, raw_dpi):
     if not pdf_path.is_file():
         raise ServiceError("The original document file is missing.", 500, "ORIGINAL_MISSING")
 
-    pages_dir = storage_service.get_pages_dir(document_id)
     staging_dir = storage_service.get_document_dir(document_id) / f"pages_staging_{storage_service.new_document_id()}"
     staging_dir.mkdir(parents=True)
     started = time.time()
-    try:
-        pages = render_pdf_pages(pdf_path, staging_dir, dpi)
-    except ServiceError:
-        storage_service.remove_path(staging_dir)
-        raise
-    except Exception as error:
-        storage_service.remove_path(staging_dir)
-        logger.exception("Document %s: PDF conversion failed", document_id)
-        raise ServiceError(
-            "The PDF could not be converted to images. The file may be damaged.",
-            422,
-            "CONVERSION_FAILED",
-        ) from error
+    pages = render_into_staging(document_id, pdf_path, staging_dir, dpi)
     duration = round(time.time() - started, 2)
 
-    def apply_conversion(data):
-        # Runs under the metadata lock, so OCR cannot be queued while the
-        # page folders are swapped, and two conversions cannot swap at once.
-        if data.get("ocr", {}).get("status") in ("queued", "running"):
-            raise ServiceError(
-                "OCR started for this document during conversion. Try again when it finishes.",
-                409,
-                "OCR_IN_PROGRESS",
-            )
-        # Every page succeeded: replace old page images and old OCR results.
-        storage_service.remove_path(pages_dir)
-        os.replace(staging_dir, pages_dir)
-        ocr_dir = storage_service.get_ocr_dir(document_id)
-        storage_service.remove_path(ocr_dir)
-        ocr_dir.mkdir(parents=True, exist_ok=True)
-
-        data["pages"] = pages
-        data["conversion"] = {
-            "status": "completed",
-            "source": "pdf_render",
-            "dpi": dpi,
-            "completed_at": storage_service.utc_now(),
-            "duration_seconds": duration,
-            "error": None,
-        }
-        data["ocr"] = {"status": "not_started"}
-
-    try:
-        document_metadata_service.update_metadata(document_id, apply_conversion)
-    finally:
-        if staging_dir.exists():
-            storage_service.remove_path(staging_dir)
+    replace_pages(document_id, staging_dir, pages, dpi, duration)
     logger.info("Document %s: converted %d page(s) at %d DPI in %.2fs", document_id, len(pages), dpi, duration)
     return {"document_id": document_id, "dpi": dpi, "page_count": len(pages), "reused": False}

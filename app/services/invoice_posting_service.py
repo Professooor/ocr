@@ -177,35 +177,23 @@ def line_source(item, extracted_items, position):
     return "OCR" if unchanged else "EDITED"
 
 
-def build_rows(snapshot):
-    """Turn the saved invoice and its document metadata into staging rows."""
+def build_header_row(snapshot, extracted_fields, corrected_fields, sources):
+    """The one XXDA_INVOICE_HEADERS row: final field values plus OCR and review statistics."""
     metadata = snapshot["metadata"]
     record = snapshot["record"]
     values = record.get("values") or {}
     extracted = record.get("extracted") or {}
-    line_items = record.get("line_items") or []
     extracted_items = record.get("extracted_line_items") or []
+    line_items = record.get("line_items") or []
     pages = record.get("pages") or [snapshot["page"]]
-    check_lengths(values, line_items)
-
-    reference = metadata.get("reference_number")
-    if not reference:
-        raise ServiceError(
-            "This document has no reference number yet. Restart the server and try again.", 409, "REFERENCE_MISSING",
-        )
-
-    extracted_fields = [key for key in FIELD_COLUMNS if text_or_none((extracted.get(key) or {}).get("value"))]
-    corrected_fields = [
-        key for key in FIELD_COLUMNS if not same_value(values.get(key), (extracted.get(key) or {}).get("value"))
-    ]
-    sources = [line_source(item, extracted_items, position) for position, item in enumerate(line_items)]
-    lines_corrected = sum(1 for source in sources if source != "OCR") + max(0, len(extracted_items) - len(line_items))
-
     ocr = metadata.get("ocr") or {}
     models = ocr.get("models") or []
+    # Lines that differ from OCR, plus lines OCR found that the user deleted.
+    lines_corrected = sum(1 for source in sources if source != "OCR") + max(0, len(extracted_items) - len(line_items))
+
     header = {
         "DOCUMENT_ID": metadata["document_id"],
-        "DOCUMENT_REF": reference,
+        "DOCUMENT_REF": metadata["reference_number"],
         "FIRST_PAGE": pages[0],
         "LAST_PAGE": pages[-1],
         "SOURCE_FILE": text_or_none(metadata.get("original_filename")),
@@ -236,7 +224,13 @@ def build_rows(snapshot):
     for key, (column, kind, _) in FIELD_COLUMNS.items():
         header[column] = convert(values.get(key), kind)
     header["CURRENCY_CODE"] = (header["CURRENCY_CODE"] or "PKR").upper()
+    return header
 
+
+def build_line_rows(record, sources):
+    """One XXDA_INVOICE_LINES row per line item."""
+    line_items = record.get("line_items") or []
+    extracted_items = record.get("extracted_line_items") or []
     lines = []
     for position, item in enumerate(line_items):
         original = extracted_items[position] if position < len(extracted_items) else {}
@@ -251,7 +245,13 @@ def build_rows(snapshot):
         for key, (column, kind, _) in LINE_COLUMNS.items():
             row[column] = convert(item.get(key), kind)
         lines.append(row)
+    return lines
 
+
+def build_audit_rows(record, corrected_fields):
+    """One XXDA_INVOICE_FIELD_AUDIT row per field: the OCR value next to the final value."""
+    values = record.get("values") or {}
+    extracted = record.get("extracted") or {}
     audit = []
     for key, (column, _, _) in FIELD_COLUMNS.items():
         info = extracted.get(key) or {}
@@ -266,6 +266,32 @@ def build_rows(snapshot):
             "SOURCE_PAGE": source.get("page"),
             "SOURCE_LINE": source.get("line"),
         })
+    return audit
+
+
+def build_rows(snapshot):
+    """Turn the saved invoice and its document metadata into staging rows."""
+    record = snapshot["record"]
+    values = record.get("values") or {}
+    extracted = record.get("extracted") or {}
+    line_items = record.get("line_items") or []
+    extracted_items = record.get("extracted_line_items") or []
+    check_lengths(values, line_items)
+
+    if not snapshot["metadata"].get("reference_number"):
+        raise ServiceError(
+            "This document has no reference number yet. Restart the server and try again.", 409, "REFERENCE_MISSING",
+        )
+
+    extracted_fields = [key for key in FIELD_COLUMNS if text_or_none((extracted.get(key) or {}).get("value"))]
+    corrected_fields = [
+        key for key in FIELD_COLUMNS if not same_value(values.get(key), (extracted.get(key) or {}).get("value"))
+    ]
+    sources = [line_source(item, extracted_items, position) for position, item in enumerate(line_items)]
+
+    header = build_header_row(snapshot, extracted_fields, corrected_fields, sources)
+    lines = build_line_rows(record, sources)
+    audit = build_audit_rows(record, corrected_fields)
     return header, lines, audit
 
 
