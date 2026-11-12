@@ -75,9 +75,7 @@ LINE_ITEM_KEYS = (
 LINE_TEXT_KEYS = ("description", "hs_code", "uom")
 LINE_NUMBER_KEYS = tuple(key for key in LINE_ITEM_KEYS if key not in LINE_TEXT_KEYS)
 
-# ---------------------------------------------------------------------------
 # Dates
-# ---------------------------------------------------------------------------
 MONTH_NAMES = "jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec"
 MONTH_NUMBERS = {name: number for number, name in enumerate(MONTH_NAMES.split("|"), start=1)}
 
@@ -167,9 +165,7 @@ def detect_date_order(texts):
     return config.INVOICE_DATE_ORDER
 
 
-# ---------------------------------------------------------------------------
 # Amounts
-# ---------------------------------------------------------------------------
 NUMBER_TOKEN = re.compile(r"\d[\d.,]*\d|\d")
 NEGATIVE_PREFIX = re.compile(r"[-−]\s*(?:[$€£¥₹]|Rs\.?)?\s*$")
 
@@ -229,7 +225,7 @@ def find_amounts(text, order):
         if before.isalnum() or before in "_/":
             continue
         if before in "-−" and start >= 2 and masked[start - 2].isalnum():
-            continue  # part of a code such as IVN-10012
+            continue  # Part of a code such as IVN-10012.
         if after.isalnum() or masked[end:].lstrip().startswith("%"):
             continue
         token = match.group()
@@ -270,9 +266,7 @@ def detect_currency(texts):
 PERCENT = re.compile(r"(?<![\d.])(\d{1,3}(?:[.,]\d{1,2})?)\s*%")
 
 
-# ---------------------------------------------------------------------------
 # Reading the value of one field from a piece of text
-# ---------------------------------------------------------------------------
 def parse_value(kind, text, order):
     """Return {"value", "ambiguous"} read from text for a field kind, or None."""
     if kind == "date":
@@ -314,9 +308,7 @@ def parse_value(kind, text, order):
     return None
 
 
-# ---------------------------------------------------------------------------
 # Field definitions: labels that introduce each value
-# ---------------------------------------------------------------------------
 # "below": the value may be on the line under the label.
 # "pick": if several lines match a label, use the "first" or the "last".
 # "reject": a label line matching this is skipped (for the whole field, or for one group).
@@ -329,7 +321,7 @@ FIELD_DEFS = [
             {
                 # The supplier's own invoice number comes first ...
                 "patterns": [
-                    r"inv[a-z]{1,3}ce\s*(?:number|no\b[.,]?|num\b\.?|#|id\b)",  # also OCR "Invaice", "Involce No,"
+                    r"inv[a-z]{1,3}ce\s*(?:number|no\b[.,]?|num\b\.?|#|id\b)",  # Also OCR misreadings such as "Invaice" and "Involce No,".
                     r"\binv\.?\s*(?:number|no\b\.?|#)",
                     r"inv[a-z]{1,3}ce\s*[a-z]?\s*[:#]",
                     r"bill\s*(?:number|no\b\.?|#)",
@@ -527,9 +519,7 @@ def is_label_text(text):
     return any(regex.search(text) for regex in ALL_LABEL_REGEXES)
 
 
-# ---------------------------------------------------------------------------
 # Lines and geometry
-# ---------------------------------------------------------------------------
 def collect_lines(page_results):
     """Flatten OCR results into one list of lines with box positions, in reading order."""
     lines = []
@@ -666,7 +656,7 @@ def value_for_label(kind, label_line, match, page_lines, order, allow_below):
 
     neighbors = right_neighbors(label_line, page_lines)[:3]
     if kind == "text" and re.search(r"particulars|details?|info", label_line["text"], re.IGNORECASE):
-        neighbors = []  # a section heading ("SELLER'S PARTICULARS"): the name is under it, not beside it
+        neighbors = []  # A section heading ("SELLER'S PARTICULARS"): the name is under it, not beside it.
     if allow_below:
         neighbors += below_neighbors(label_line, page_lines)[:3]
     for other in neighbors:
@@ -722,9 +712,7 @@ def make_field(candidate, force_check=False):
     }
 
 
-# ---------------------------------------------------------------------------
 # Fallbacks when no label is found
-# ---------------------------------------------------------------------------
 INVOICE_CODE = re.compile(r"\b(?:INV|IVN|INVOICE)[-_/ ]?\d[\w\-/]*", re.IGNORECASE)
 
 
@@ -847,7 +835,7 @@ def fallback_vendor_name(lines_by_page, order):
         letters = len(re.findall(r"[A-Za-z]", line["text"]))
         value = line["h"] / tallest
         value += 0.8 if COMPANY_WORDS.search(line["text"]) else 0
-        value -= 0.4 if letters < 6 else 0  # a logo abbreviation such as "AHP"
+        value -= 0.4 if letters < 6 else 0  # A logo abbreviation such as "AHP".
         value -= 0.6 * line["t"] / (0.4 * page_height)
         return value
 
@@ -874,9 +862,7 @@ def fallback_vendor_name(lines_by_page, order):
     return {"value": re.sub(r"\s+", " ", name).strip(), "line": chosen, "ambiguous": False}
 
 
-# ---------------------------------------------------------------------------
 # More header fields: supplier and buyer details, references, tax amounts
-# ---------------------------------------------------------------------------
 # These labels are kept apart from FIELD_DEFS so they do not change how the main fields are read.
 NTN_LABEL = r"(?:\bcnic\s*/\s*)?(?<![A-Za-z])n\.?\s?t\.?\s?n(?![A-Za-z])"
 STRN_LABEL = (
@@ -1044,7 +1030,7 @@ def extra_candidates(definition, lines, lines_by_page, order):
         value_line = candidate["line"]
         if value_line is not line and is_extra_label(value_line["text"]) and not first_match(
                 definition["regexes"], value_line["text"]):
-            continue  # the "value" is the next label ("NTN :" under "Address :")
+            continue  # The "value" is the next label ("NTN :" under "Address :").
         candidate["label_line"] = line
         candidates.append(candidate)
     return candidates
@@ -1124,9 +1110,7 @@ def tax_rate_from_amounts(subtotal_text, tax_text):
     return None
 
 
-# ---------------------------------------------------------------------------
 # Line items table
-# ---------------------------------------------------------------------------
 # Words in the header row of an items table. OCR spellings ("Qnty", "Desuriprion") are included.
 HEADER_WORDS = {
     "description": re.compile(r"\b(?:descr\w*|desur\w*|item\s*name|items?|products?(?:\s*name)?|goods|particulars|details|services?)\b", re.I),
@@ -1242,7 +1226,7 @@ def find_without_amount(numbers, columns):
                     continue
                 if "rate" in columns and abs(numbers[j]["x"] - columns["rate"]) > min(
                         abs(numbers[j]["x"] - columns[key]) for key in ("quantity", "amount") if key in columns):
-                    continue  # nearer another column than the rate column
+                    continue  # Nearer another column than the rate column.
                 quantity_value = amount_value / rate_value
                 whole = quantity_value.to_integral_value()
                 if whole >= 1 and abs(quantity_value - whole) <= Decimal("0.001") * whole:
@@ -1267,7 +1251,7 @@ def find_quantity_rate_amount(numbers, columns):
             for j in range(i + 1, k):
                 first, second = numbers[i]["value"], numbers[j]["value"]
                 if min(first, second) < Decimal("0.2") or abs(first * second - value) > tolerance:
-                    continue  # a factor below 0.2 is a misread, not a price or quantity
+                    continue  # A factor below 0.2 is a misread, not a price or quantity.
                 trivial = first == 1 or second == 1
                 candidate = (trivial, k, i, j)
                 if found is None or candidate[:2] < found[:2]:
@@ -1295,11 +1279,11 @@ def description_text(lines, used_values, serial):
     for line in lines:
         text = line["text"]
         if UNIT_WORDS.match(text) or not re.search(r"[A-Za-z]{2}", text):
-            continue  # unit column, or a cell with only numbers
+            continue  # Unit column, or a cell with only numbers.
         if DESCRIPTION_NOISE.match(text):
             continue  # "HS Code: 4813.4000", "UOM: KG" printed under the item name
         if re.fullmatch(r"\s*[\d.,]+\s*" + LINE_UNIT.pattern + r"\W*", text, re.IGNORECASE):
-            continue  # a quantity with its unit ("9,180.00 Pcs")
+            continue  # A quantity with its unit ("9,180.00 Pcs").
         if is_header_text(text):
             continue
         line_words = text.split()
@@ -1354,7 +1338,7 @@ def items_by_columns(numbers, columns):
     rate = under("rate", {id(amount), id(quantity)})
     if quantity and rate and abs(quantity["value"] * rate["value"] - amount["value"]) > max(
             Decimal("1"), amount["value"] * Decimal("0.005")):
-        quantity = None  # misread quantity ("49" read as "43"): worked out from amount / rate
+        quantity = None  # Misread quantity ("49" read as "43"): worked out from amount / rate.
     return quantity, rate, amount
 
 
@@ -1435,25 +1419,25 @@ def line_extras(lines, numbers, used, amount):
 def read_items_table(rows, columns, page_number, order, median_height, pending=None, subtotal=None):
     """Read the line item rows below the table header and turn them into line items (description, quantity, rate, amount)."""
     items = []
-    pending = list(pending or [])  # text rows that are not yet attached to an item
+    pending = list(pending or [])  # Text rows that are not yet attached to an item.
     last_bottom = None
-    carry = []            # a row without a match, tried again together with the next row (a tall cell split in two)
+    carry = []            # A row without a match, retried with the next row (a tall cell split in two).
 
     def numbers_of(row_lines, serial):
         found = row_numbers({"lines": row_lines}, order)
         if found and found[0]["value"] == serial and found[0]["line"]["l"] <= min(line["l"] for line in row_lines):
-            found = found[1:]  # serial number column
+            found = found[1:]  # Serial number column.
         return found
 
     for row in rows:
-        lines = [line for line in row["lines"] if line["h"] <= 2.2 * median_height]  # skip stamps and signatures
+        lines = [line for line in row["lines"] if line["h"] <= 2.2 * median_height]  # Skip stamps and signatures.
         if not lines:
             continue
         top = min(line["t"] for line in lines)
         if last_bottom is not None and top - last_bottom > 6 * median_height and items:
             break  # A large gap after the items: the rest of the page is not the table.
         if any(TOTAL_ROW.match(line["text"].strip()) for line in lines):
-            break  # the totals row
+            break  # The totals row.
 
         serial = len(items) + 1
         triple = None
@@ -1506,7 +1490,7 @@ def read_items_table(rows, columns, page_number, order, median_height, pending=N
         width = columns.get("width", 1e9)
         suspicious = quantity and rate and (
             1 in (quantity["value"], rate["value"])  # "117.00" read as "1:7.00" gives "1 x 7 = 7"
-            or ("amount" in columns and abs(amount["x"] - columns["amount"]) > 0.08 * width)  # not under Amount
+            or ("amount" in columns and abs(amount["x"] - columns["amount"]) > 0.08 * width)  # Not under the Amount heading.
         )
         if suspicious:
             by_columns = items_by_columns(numbers, columns)
@@ -1522,7 +1506,7 @@ def read_items_table(rows, columns, page_number, order, median_height, pending=N
         used_values = {item["value"] for item in (quantity, rate, amount) if item}
         if items and close(amount["value"], sum(Decimal(item["amount"]) for item in items)) and len(items) >= 1 \
                 and (quantity is None or rate is None or not description_text(lines, used_values, serial)):
-            break  # the totals row (its "Total" label sits on another line): amount = sum of the items
+            break  # The totals row (its "Total" label sits on another line): amount = sum of the items.
         description = description_text(lines, used_values, serial)
         if items:
             items[-1].pop("_awaiting", None)
@@ -1727,12 +1711,10 @@ def group_rows(page_lines):
     return _group_by_height(page_lines, page_slope(page_lines))
 
 
-# ---------------------------------------------------------------------------
 # Subtotal + tax = total
-# ---------------------------------------------------------------------------
 TOTAL_WORD = r"t[o0ue]t[ae@][l1i]"  # OCR reads "Total" as "Totai", "Tutal", "Totel" or "Tetal"
 TOTAL_ROW = re.compile(r"(?<![A-Za-z])(?:grand\s*)?" + TOTAL_WORD + r"(?![A-Za-z])(?!\s*(?:quantity|qty|pcs|weight))", re.IGNORECASE)
-AMOUNT_TOLERANCE = Decimal("1.00")  # rounding on the invoice
+AMOUNT_TOLERANCE = Decimal("1.00")  # Rounding on the invoice.
 
 
 def close(first, second):
@@ -1906,9 +1888,7 @@ def clean_po(value):
     return re.sub(r"^P[O0](?=\d{5,}$)", "", clean_code(value), flags=re.IGNORECASE)
 
 
-# ---------------------------------------------------------------------------
 # Public functions
-# ---------------------------------------------------------------------------
 def extract_invoice_data(page_results):
     """
     Extract invoice fields and line items.
@@ -1937,7 +1917,7 @@ def extract_invoice_data(page_results):
     if vendor and found["vendor_name"] and lines_by_page:
         vendor_words = " ".join(re.findall(r"[A-Za-z]{3,}", vendor["value"])).lower()
         if any(buyer in vendor_words for buyer in buyer_names(lines_by_page[min(lines_by_page)])):
-            found["vendor_name"] = None  # the buyer's name, found next to a supplier heading
+            found["vendor_name"] = None  # The buyer's name, found next to a supplier heading.
 
     forced = set()
     if found["invoice_number"] is None:
@@ -2032,9 +2012,7 @@ def amounts_from_items(found, items, lines, order):
     return {"subtotal"}
 
 
-# ---------------------------------------------------------------------------
 # Where each invoice starts in a document with several invoices
-# ---------------------------------------------------------------------------
 # "Page 2", "Page 2 of 3", "Page No. 2", "page 2/3": the first number is the page.
 PAGE_MARKER = re.compile(r"\bpage\s*(?:no\.?\s*)?[:#]?\s*(\d{1,3})(?:\s*(?:of|/)\s*\d{1,3})?(?!\d)", re.IGNORECASE)
 
@@ -2102,7 +2080,7 @@ def page_signals(page_result):
         1 for text in head for amount in find_amounts(text, config.INVOICE_DATE_ORDER) if amount >= 10
     )
     continues_table = head_amounts >= 3 and not any(
-        # a heading such as "SALES TAX INVOICE", not a label such as "FBR Invoice No. :"
+        # A heading such as "SALES TAX INVOICE", not a label such as "FBR Invoice No. :".
         re.search(r"invoice|inv[a-z]{1,3}ce|quotation", text, re.IGNORECASE)
         and not re.search(r"fbr|digital|pral|\bno\b|#|:", text, re.IGNORECASE)
         for text in top_texts
@@ -2127,7 +2105,7 @@ def starts_new_invoice(signals, current_number):
     5. A page with none of these (terms, blank back side) belongs to the invoice before it.
     """
     if signals.get("attachment") or signals.get("continues_table"):
-        return False  # a supporting document, or the items table going on from the page before
+        return False  # A supporting document, or the items table going on from the page before.
     if signals["page_marker"] is not None:
         return signals["page_marker"] <= 1
     if signals["invoice_number"]:

@@ -22,9 +22,7 @@ Image.MAX_IMAGE_PIXELS = config.MAX_PAGE_PIXELS
 INTEGER_PATTERN = re.compile(r"^[0-9]+$")
 
 
-# ---------------------------------------------------------------------------
 # DPI
-# ---------------------------------------------------------------------------
 def validate_dpi(raw_value, allow_missing=True):
     """
     Return a valid integer DPI between PDF_DPI_MIN and PDF_DPI_MAX.
@@ -59,9 +57,7 @@ def validate_dpi(raw_value, allow_missing=True):
     return dpi
 
 
-# ---------------------------------------------------------------------------
 # Page numbers
-# ---------------------------------------------------------------------------
 def validate_page_number(raw_value, page_count):
     """Return the page number as an int. Raises an error if it is not a whole number, or if the document has fewer pages."""
     text = str(raw_value).strip()
@@ -77,9 +73,7 @@ def validate_page_number(raw_value, page_count):
     return page_number
 
 
-# ---------------------------------------------------------------------------
 # Files
-# ---------------------------------------------------------------------------
 def get_extension(filename):
     """Return the lowercase file extension including the dot (for example ".pdf"), or "" if there is none."""
     name = str(filename or "").replace("\\", "/").split("/")[-1]

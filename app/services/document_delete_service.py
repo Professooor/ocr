@@ -27,7 +27,7 @@ def set_guard(function):
 
 def delete_document(document_id, confirm=False):
     """Delete the document folder. Returns {"document_id", "reference_number", "original_filename"}."""
-    metadata = document_metadata_service.load_metadata(document_id)  # 400 / 404 for bad or unknown IDs
+    metadata = document_metadata_service.load_metadata(document_id)  # Raises 400 or 404 for a bad or unknown ID.
     if (metadata.get("ocr") or {}).get("status") in ("queued", "running"):
         raise ServiceError(
             "OCR is still running for this document. Wait until it has finished, then delete it.",

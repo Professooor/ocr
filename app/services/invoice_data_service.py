@@ -150,9 +150,7 @@ def write_stored(document_id, store):
     storage_service.write_json_atomic(invoice_data_path(document_id), store)
 
 
-# ---------------------------------------------------------------------------
 # Records
-# ---------------------------------------------------------------------------
 def values_from_extraction(extraction):
     """Take only the field values out of an extraction result (the starting values the user can correct)."""
     return {key: extraction["fields"][key]["value"] for key in FIELD_KEYS}
@@ -234,9 +232,7 @@ def record_for_page(store, page_number):
     return None
 
 
-# ---------------------------------------------------------------------------
 # Splitting the document into invoices
-# ---------------------------------------------------------------------------
 def load_page_results(document_id, metadata):
     """{page number: OCR result with text, or None when the page has not been read}."""
     results = {}
@@ -326,7 +322,7 @@ def review_summary(store):
     """Count the invoices of the document by status (saved, draft, needs review)."""
     records = sorted_records(store)
     posted = sum(1 for record in records if record["status"] == "posted")
-    saved = sum(1 for record in records if record["status"] == "saved") + posted  # posted invoices were saved first
+    saved = sum(1 for record in records if record["status"] == "saved") + posted  # Posted invoices were saved first.
     draft = sum(1 for record in records if record["status"] == "draft")
     return {
         "invoices": len(records), "saved": saved, "draft": draft, "posted": posted,
@@ -393,7 +389,7 @@ def build_response(document_id, store, page_number):
             "count": len(records),
             "pages": pages,
             "first_pages": [item["pages"][0] for item in records],
-            "statuses": [item["status"] for item in records],  # same order as first_pages
+            "statuses": [item["status"] for item in records],  # Same order as first_pages.
         },
         "summary": review_summary(store),
         "posting": posting_info(record),
@@ -423,9 +419,7 @@ def refuse_if_posted(record, action):
         )
 
 
-# ---------------------------------------------------------------------------
 # Public functions
-# ---------------------------------------------------------------------------
 def get_invoice_data(document_id, page=None):
     """The invoice that contains the page (default: page 1), extracted from the OCR text when needed."""
     with _lock:
@@ -486,9 +480,7 @@ def set_page_break(document_id, payload):
         return build_response(document_id, store, page_number)
 
 
-# ---------------------------------------------------------------------------
 # Validation
-# ---------------------------------------------------------------------------
 def text_of(value):
     """Convert a value to trimmed text. None becomes ""."""
     return "" if value is None else str(value).strip()
@@ -665,9 +657,7 @@ def delete_warning(document_id):
     }
 
 
-# ---------------------------------------------------------------------------
 # Posting to the database (used by invoice_posting_service)
-# ---------------------------------------------------------------------------
 def posting_snapshot(document_id, page):
     """
     A copy of the saved invoice on this page, with the document metadata, ready to be posted.

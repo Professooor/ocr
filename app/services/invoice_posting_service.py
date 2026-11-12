@@ -85,9 +85,7 @@ assert set(FIELD_COLUMNS) == set(invoice_extraction_service.FIELD_KEYS)
 assert set(LINE_COLUMNS) == set(invoice_extraction_service.LINE_ITEM_KEYS)
 
 
-# ---------------------------------------------------------------------------
 # Value conversion
-# ---------------------------------------------------------------------------
 def text_or_none(value):
     text = "" if value is None else str(value).strip()
     return text or None
@@ -144,9 +142,7 @@ def average(numbers):
     return round(sum(numbers) / len(numbers), 4) if numbers else None
 
 
-# ---------------------------------------------------------------------------
 # Building the rows
-# ---------------------------------------------------------------------------
 def check_lengths(values, line_items):
     """The staging columns are shorter than the app's limits for some fields: refuse instead of cutting."""
     errors = []
@@ -295,9 +291,7 @@ def build_rows(snapshot):
     return header, lines, audit
 
 
-# ---------------------------------------------------------------------------
 # SQL (parameterized INSERTs only)
-# ---------------------------------------------------------------------------
 def insert_sql(table, columns, returning=None):
     names = ", ".join(columns)
     binds = ", ".join(f":{column.lower()}" for column in columns)
@@ -353,9 +347,7 @@ def find_posted_id(document_id, first_page):
     return int(rows[0]["invoice_id"]) if rows else None
 
 
-# ---------------------------------------------------------------------------
 # Public function
-# ---------------------------------------------------------------------------
 def post_invoice(document_id, page=None):
     """Post the saved invoice that contains the page. Returns the invoice data with status "posted"."""
     if not oracle_db_service.is_configured():

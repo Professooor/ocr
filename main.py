@@ -44,8 +44,7 @@ from app.services import (
 setup_logging()
 logger = logging.getLogger("main")
 
-# The OCR layer stays generic: the invoice rules decide which pages were not read completely
-# and are read again from a sharper image (OCR_DETAIL_DPI).
+# Keep the OCR layer generic: the invoice rules choose which pages are read again at OCR_DETAIL_DPI.
 ocr_processing_service.set_detail_check(
     lambda document_id, page_result: invoice_extraction_service.needs_more_detail(page_result)
 )

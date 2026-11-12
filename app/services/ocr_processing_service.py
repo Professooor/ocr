@@ -249,9 +249,7 @@ def read_page(engine, document_id, page, image_path=None):
     return result
 
 
-# ---------------------------------------------------------------------------
 # Detail pass: read unclear pages again from a higher-resolution image
-# ---------------------------------------------------------------------------
 _detail_check = None
 
 
@@ -288,7 +286,7 @@ def read_page_in_detail(engine, document_id, page):
     Render the page at OCR_DETAIL_DPI and read it again. The new image and result replace the old
     ones only when the new reading succeeded and found at least as much text. Returns True if replaced.
     """
-    from app.services import pdf_processing_service  # imported here: the PDF module is optional for images
+    from app.services import pdf_processing_service  # Imported here: the PDF module is optional for images.
 
     number = page["page_number"]
     pages_dir = storage_service.get_pages_dir(document_id)
