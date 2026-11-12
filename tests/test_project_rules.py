@@ -20,9 +20,8 @@ def source_files():
     return files
 
 
-# The application reads invoices, so invoice wording belongs in the review screen,
-# the invoice data modules. Everything else (upload, PDF, OCR,
-# storage, Oracle, shared files) stays generic and must not use invoice wording.
+# Only the files below may use the word "invoice". Generic parts (upload, PDF, OCR,
+# storage, Oracle, shared files) must stay generic so they can be reused for any document.
 INVOICE_WORDING_ALLOWED = {
     "invoice_data_api.py",
     "invoice_posting_api.py",
@@ -51,7 +50,7 @@ INVOICE_WORDING_ALLOWED = {
 
 
 def test_generic_modules_stay_free_of_invoice_wording():
-    word = "in" + "voice"  # Built at runtime so this test file does not match itself.
+    word = "in" + "voice"
     offenders = [
         p.name for p in source_files()
         if p.name not in INVOICE_WORDING_ALLOWED

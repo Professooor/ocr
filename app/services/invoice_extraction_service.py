@@ -26,7 +26,7 @@ from app import config
 
 LOW_CONFIDENCE = 0.8
 MAX_LINE_ITEMS = 500
-# Raise when the rules change, so stored documents are read again (values the user saved are kept).
+# Increase this number when the rules change, so stored documents are read again (values the user saved are kept).
 RULES_VERSION = 7
 
 # Header fields, in the order of the review form: supplier, buyer, invoice references, amounts.
@@ -1210,8 +1210,8 @@ def find_without_amount(numbers, columns):
                             quantity, rate = rate, quantity
                         amount = {"value": including - tax, "x": columns.get("amount", 0), "line": None}
                         return quantity, rate, amount
-    # The quantity was not read either: amount = amount with tax - tax, and amount / rate is a whole quantity.
-    # The amount with tax is the last number of the row and the tax comes right before it.
+    # The quantity was not read either. Work out amount = (amount with tax) - tax; then amount / rate must be
+    # a whole quantity. The amount with tax is the last number of the row, and the tax comes right before it.
     for m in range(count - 1, max(count - 3, 0), -1):
         for k in range(m - 1, max(m - 3, -1), -1):
             tax, including = numbers[k]["value"], numbers[m]["value"]
@@ -1251,13 +1251,13 @@ def find_quantity_rate_amount(numbers, columns):
             for j in range(i + 1, k):
                 first, second = numbers[i]["value"], numbers[j]["value"]
                 if min(first, second) < Decimal("0.2") or abs(first * second - value) > tolerance:
-                    continue  # A factor below 0.2 is a misread, not a price or quantity.
+                    continue  # A number below 0.2 is a misread, not a real price or quantity.
                 trivial = first == 1 or second == 1
                 candidate = (trivial, k, i, j)
                 if found is None or candidate[:2] < found[:2]:
                     found = candidate
         if found and not found[0]:
-            break  # The leftmost product that is not "x 1" wins.
+            break  # Stop at the first match from the left where neither number is 1.
     if not found:
         return find_without_amount(numbers, columns)
     _, k, i, j = found
@@ -1497,7 +1497,7 @@ def read_items_table(rows, columns, page_number, order, median_height, pending=N
             if by_columns and by_columns[1] and by_columns[2]["value"] != amount["value"]:
                 quantity, rate, amount = None, by_columns[1], by_columns[2]
         if quantity is None and rate and rate["value"] > 0:
-            # The quantity cell could not be read ("1,:49.00"): amount / rate, a whole number when close to one.
+            # The quantity cell could not be read ("1,:49.00"): use amount / rate, rounded when very close to a whole number.
             derived = amount["value"] / rate["value"]
             whole = derived.to_integral_value()
             derived = whole if abs(derived - whole) <= max(Decimal("0.01"), derived * Decimal("0.0005")) \
@@ -1683,8 +1683,8 @@ def _group_by_height(page_lines, slope):
 
 def page_slope(page_lines):
     """
-    How much a scanned page is tilted: the rise of a row per pixel to the right, measured on
-    long rows (median of their least-squares slopes). 0 for a straight page.
+    How much a scanned page is tilted: how far a row rises for each pixel to the right,
+    measured on long rows. 0 for a straight page.
     """
     width = page_lines[0]["page_width"] if page_lines else 1
     slopes = []
@@ -1711,7 +1711,7 @@ def group_rows(page_lines):
     return _group_by_height(page_lines, page_slope(page_lines))
 
 
-# Subtotal + tax = total
+# Totals: subtotal + tax = total
 TOTAL_WORD = r"t[o0ue]t[ae@][l1i]"  # OCR reads "Total" as "Totai", "Tutal", "Totel" or "Tetal"
 TOTAL_ROW = re.compile(r"(?<![A-Za-z])(?:grand\s*)?" + TOTAL_WORD + r"(?![A-Za-z])(?!\s*(?:quantity|qty|pcs|weight))", re.IGNORECASE)
 AMOUNT_TOLERANCE = Decimal("1.00")  # Rounding on the invoice.
@@ -1888,7 +1888,7 @@ def clean_po(value):
     return re.sub(r"^P[O0](?=\d{5,}$)", "", clean_code(value), flags=re.IGNORECASE)
 
 
-# Public functions
+# Reading a whole invoice
 def extract_invoice_data(page_results):
     """
     Extract invoice fields and line items.

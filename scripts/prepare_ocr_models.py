@@ -2,18 +2,14 @@
 Download the official PaddleOCR ONNX models into the project and make them
 loadable by onnxruntime 1.16.3.
 
-Why this script exists
-----------------------
-Oracle Linux 7.9 ships glibc 2.17. Every PaddlePaddle 3.x Linux wheel requires
-glibc 2.27+, and onnxruntime 1.16.3 is the newest onnxruntime release that still
-supports glibc 2.17. Some official ONNX models are labelled with ONNX IR
-version 10, while onnxruntime 1.16.3 accepts IR version 9 at most.
+Why this script is needed:
+Oracle Linux 7.9 is too old for PaddlePaddle, so the app uses onnxruntime 1.16.3,
+the newest version that still runs there. Some official ONNX models are labelled
+"IR version 10", but onnxruntime 1.16.3 only loads models labelled 9 or lower.
 
-The IR version is only a file-format label. When a model uses operator sets
-that onnxruntime 1.16.3 supports (ai.onnx opset 19 or lower) and contains no
-IR-10-only content (model-level functions), lowering the label to 9 does not
-change the model. This script checks those conditions and refuses to patch a
-model that does not meet them.
+The IR version is only a label of the file format. Changing it from 10 to 9 does
+not change the model, as long as the model uses nothing that needs version 10.
+This script checks that first and refuses to change a model when it is not safe.
 
 Usage (run from the project folder):
     Windows: .\\.venv\\Scripts\\python.exe scripts\\prepare_ocr_models.py
@@ -36,15 +32,15 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 from app import config  # noqa: E402
 
-MAX_IR_VERSION = 9        # Highest ONNX IR version accepted by onnxruntime 1.16.3
-MAX_DEFAULT_OPSET = 19    # Highest ai.onnx opset supported by onnxruntime 1.16.3
-FIELD_IR_VERSION = 1      # ModelProto.ir_version
-FIELD_OPSET_IMPORT = 8    # ModelProto.opset_import
-FIELD_FUNCTIONS = 25      # ModelProto.functions (IR 10 feature)
+MAX_IR_VERSION = 9        # Highest IR version that onnxruntime 1.16.3 can load
+MAX_DEFAULT_OPSET = 19    # Highest operator set (opset) version onnxruntime 1.16.3 supports
+FIELD_IR_VERSION = 1      # Field number of the IR version inside an ONNX file
+FIELD_OPSET_IMPORT = 8    # Field number of the opsets the model uses
+FIELD_FUNCTIONS = 25      # Field number of model functions (needs IR version 10)
 
 
 def read_varint(data, position):
-    """Read a protobuf varint. Return (value, new_position)."""
+    """Read one number stored in protobuf format (the file format of ONNX). Return (value, new_position)."""
     result = 0
     shift = 0
     while True:

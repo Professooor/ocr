@@ -74,7 +74,7 @@ def test_data_is_extracted_automatically_after_ocr(client, invoice_document):
         "due_date": "2023-11-14",
         "currency": "USD",
         "subtotal": "500.00",
-        "sales_tax_rate": "10",  # worked out from tax / subtotal
+        "sales_tax_rate": "10",  # Worked out from tax / subtotal
         "tax": "50.00",
         "total_due": "550.00",
     })
@@ -178,7 +178,7 @@ def test_corrections_are_saved_and_survive_new_ocr(client, invoice_document, mon
     values = dict(data["values"], vendor_name="Acme Supplies Limited", total_due="560.00", currency="usd")
     items = [
         {"description": "Services (corrected)", "quantity": "10", "rate": "50.00", "amount": "500.00"},
-        {"description": "", "quantity": "", "rate": "", "amount": ""},       # empty rows are dropped
+        {"description": "", "quantity": "", "rate": "", "amount": ""},       # Empty rows are dropped
         {"description": "Delivery", "quantity": "1", "rate": "10.00", "amount": "10.00"},
     ]
     saved = put_data(client, invoice_document, "saved", values, items).json()["data"]
@@ -203,7 +203,7 @@ def test_corrections_are_saved_and_survive_new_ocr(client, invoice_document, mon
     after = get_data(client, invoice_document)
     assert after["status"] == "saved"
     assert after["values"]["vendor_name"] == "Acme Supplies Limited"
-    assert after["extracted"]["vendor_name"]["value"] == "Different Vendor"  # extraction refreshed
+    assert after["extracted"]["vendor_name"]["value"] == "Different Vendor"  # Extraction refreshed
 
 
 def test_unsaved_data_follows_new_ocr_results(client, invoice_document):
@@ -280,9 +280,7 @@ def test_document_summary_shows_review_status(client, invoice_document):
     assert status() == "saved"
 
 
-# ---------------------------------------------------------------------------
 # Documents with several invoices
-# ---------------------------------------------------------------------------
 def invoice_page(vendor, number=None, total=None, extra=()):
     lines = [(vendor, (80, 60, 500, 100))]
     if number:

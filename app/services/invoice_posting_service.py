@@ -32,11 +32,11 @@ LINES_TABLE = "XXDA_INVOICE_LINES"
 FIELD_AUDIT_TABLE = "XXDA_INVOICE_FIELD_AUDIT"
 HISTORY_TABLE = "XXDA_INVOICE_STATUS_HISTORY"
 
-# Constraints of the staging schema that tell the user something specific.
+# Database uniqueness rules whose errors get their own message for the user.
 DOCUMENT_UNIQUE_CONSTRAINT = "XXDA_INV_HDR_DOC_UK"
 DUPLICATE_CONSTRAINT = "XXDA_INV_HDR_DUP_UK"
 
-# App field -> (staging column, kind, maximum length for text). Kinds: text, date, number.
+# App field -> (database column, value type, maximum text length). Types: text, date, number.
 FIELD_COLUMNS = {
     "vendor_name": ("SELLER_NAME", "text", 240),
     "supplier_ntn": ("SELLER_NTN", "text", 20),
@@ -65,7 +65,7 @@ FIELD_COLUMNS = {
     "amount_in_words": ("AMOUNT_IN_WORDS", "text", 500),
 }
 
-# Line item field -> (staging column, kind, maximum length for text).
+# Line item field -> (database column, value type, maximum text length).
 LINE_COLUMNS = {
     "hs_code": ("HS_CODE", "text", 12),
     "description": ("DESCRIPTION", "text", 500),
@@ -85,7 +85,7 @@ assert set(FIELD_COLUMNS) == set(invoice_extraction_service.FIELD_KEYS)
 assert set(LINE_COLUMNS) == set(invoice_extraction_service.LINE_ITEM_KEYS)
 
 
-# Value conversion
+# Converting values for the database
 def text_or_none(value):
     text = "" if value is None else str(value).strip()
     return text or None
@@ -142,9 +142,9 @@ def average(numbers):
     return round(sum(numbers) / len(numbers), 4) if numbers else None
 
 
-# Building the rows
+# Building the database rows
 def check_lengths(values, line_items):
-    """The staging columns are shorter than the app's limits for some fields: refuse instead of cutting."""
+    """Some database columns allow less text than the app: refuse values that are too long instead of cutting them."""
     errors = []
     for key, (column, kind, limit) in FIELD_COLUMNS.items():
         text = text_or_none(values.get(key))
@@ -291,7 +291,7 @@ def build_rows(snapshot):
     return header, lines, audit
 
 
-# SQL (parameterized INSERTs only)
+# SQL: only INSERT statements. Values are sent separately (binds), never pasted into the SQL text.
 def insert_sql(table, columns, returning=None):
     names = ", ".join(columns)
     binds = ", ".join(f":{column.lower()}" for column in columns)
@@ -347,7 +347,6 @@ def find_posted_id(document_id, first_page):
     return int(rows[0]["invoice_id"]) if rows else None
 
 
-# Public function
 def post_invoice(document_id, page=None):
     """Post the saved invoice that contains the page. Returns the invoice data with status "posted"."""
     if not oracle_db_service.is_configured():

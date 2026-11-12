@@ -76,11 +76,11 @@ TEMP_DIR = STORAGE_DIR / "temp"
 LOG_DIR = read_path("LOG_DIR", "logs")
 
 # Document upload
-# There is no file size or page limit. MAX_PAGE_PIXELS is only a memory safeguard:
-# the largest page image (width x height) that is rendered, about 180 MB of memory.
+# There is no limit on file size or page count. MAX_PAGE_PIXELS only protects memory:
+# it is the largest page image (width x height) allowed, about 180 MB.
 MAX_PAGE_PIXELS = read_int("MAX_PAGE_PIXELS", 60_000_000, 1_000_000, 2_000_000_000)
 
-# Supported file extensions mapped to the detected content type.
+# Allowed file extensions and the file type each one stands for.
 ALLOWED_EXTENSIONS = {
     ".pdf": "pdf",
     ".png": "png",
@@ -91,23 +91,23 @@ ALLOWED_EXTENSIONS = {
     ".tiff": "tiff",
 }
 
-# PDF page conversion DPI (fixed by the project requirements)
+# DPI limits for turning PDF pages into images (fixed by the project requirements).
 PDF_DPI_MIN = 50
 PDF_DPI_MAX = 300
 PDF_DPI_DEFAULT = 75
 
-# OCR (PaddleOCR 3.x)
+# OCR
 # "onnxruntime" works on Windows 11 and Oracle Linux 7.9.
-# "paddle" works on Windows 11 only (PaddlePaddle 3.x Linux wheels need glibc 2.27+).
+# "paddle" works on Windows 11 only (PaddlePaddle does not run on Oracle Linux 7.9).
 OCR_ENGINE = read_text("OCR_ENGINE", "onnxruntime").lower()
 OCR_DEVICE = read_text("OCR_DEVICE", "cpu").lower()
 OCR_TEXT_DETECTION_MODEL = read_text("OCR_TEXT_DETECTION_MODEL", "PP-OCRv6_small_det")
 OCR_TEXT_RECOGNITION_MODEL = read_text("OCR_TEXT_RECOGNITION_MODEL", "PP-OCRv6_small_rec")
 OCR_MODEL_DIR = read_path("OCR_MODEL_DIR", "models")
 OCR_CPU_THREADS = read_int("OCR_CPU_THREADS", 4, 1, 256)
-# oneDNN must stay disabled for PaddlePaddle 3.3.x on CPU (known runtime error).
+# Keep this off: with the "paddle" engine on CPU, turning it on causes a known error.
 OCR_ENABLE_MKLDNN = read_bool("OCR_ENABLE_MKLDNN", False)
-# Detail pass: incomplete PDF pages are rendered again at this DPI and read again (0 = off).
+# PDF pages that were not read completely are rendered again at this DPI and read again (0 = off).
 OCR_DETAIL_DPI = read_int("OCR_DETAIL_DPI", 150, 0, PDF_DPI_MAX)
 if OCR_DETAIL_DPI and OCR_DETAIL_DPI < PDF_DPI_MIN:
     raise ValueError(f"Environment variable OCR_DETAIL_DPI must be 0 or between {PDF_DPI_MIN} and {PDF_DPI_MAX}.")
@@ -124,14 +124,13 @@ ORACLE_ENABLED = read_bool("ORACLE_ENABLED", False)
 ORACLE_USER = read_text("ORACLE_USER")
 ORACLE_PASSWORD = read_text("ORACLE_PASSWORD")
 ORACLE_DSN = read_text("ORACLE_DSN")
-# Empty = python-oracledb Thin mode (no Oracle Client needed).
-# A folder path = Thick mode using Oracle Instant Client from that folder.
+# Empty: connect without installing Oracle Client ("Thin" mode).
+# A folder path: use the Oracle Instant Client in that folder ("Thick" mode).
 ORACLE_CLIENT_LIB_DIR = read_text("ORACLE_CLIENT_LIB_DIR")
-# Thick mode only: folder with sqlnet.ora / tnsnames.ora (empty = the client's default, TNS_ADMIN).
-# Relative paths are resolved against the project folder.
+# Thick mode only: folder that holds sqlnet.ora and tnsnames.ora (empty = the client's default).
 ORACLE_CONFIG_DIR = str(read_path("ORACLE_CONFIG_DIR", "")) if read_text("ORACLE_CONFIG_DIR") else ""
 ORACLE_CONNECT_TIMEOUT = read_int("ORACLE_CONNECT_TIMEOUT", 10, 1, 300)
-# Owner of the staging tables when the app user is a different schema (empty = the app user's own schema).
+# Owner of the staging tables, if it is not the app's own database user (empty = the app's user).
 ORACLE_SCHEMA = read_text("ORACLE_SCHEMA").upper()
 if ORACLE_SCHEMA and not re.match(r"^[A-Z][A-Z0-9_$#]{0,127}$", ORACLE_SCHEMA):
     raise ValueError("Environment variable ORACLE_SCHEMA must be a plain Oracle schema name.")

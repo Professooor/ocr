@@ -104,7 +104,7 @@ def test_saved_invoice_is_posted_in_one_transaction(client, saved_invoice, fake_
     assert data["posting"]["staging_id"] == 501
     assert data["posting"]["attempts"] == 1
     assert data["summary"]["posted"] == 1
-    assert data["invoice"]["statuses"] == ["posted"]  # used by "Post all saved"
+    assert data["invoice"]["statuses"] == ["posted"]  # Used by "Post all saved"
 
     cursor = fake_oracle["cursor"]
     header = cursor.rows_for("XXDA_INVOICE_HEADERS")[0]
@@ -117,7 +117,7 @@ def test_saved_invoice_is_posted_in_one_transaction(client, saved_invoice, fake_
     assert header["grand_total"] == Decimal("550.00")
     assert header["currency_code"] == "USD"
     assert header["status"] == "POSTED"
-    assert header["fields_corrected"] == 2  # vendor name and NTN were changed by the user
+    assert header["fields_corrected"] == 2  # Vendor name and NTN were changed by the user
     assert "RETURNING INVOICE_ID INTO :new_id" in cursor.statements[0][0]
 
     lines = cursor.rows_for("XXDA_INVOICE_LINES")

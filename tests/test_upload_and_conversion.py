@@ -234,7 +234,7 @@ def test_documents_without_a_reference_number_get_one(client):
     reference = document_metadata_service.load_metadata(document_id)["reference_number"]
     assert reference.startswith("DOC-")
     numbers = [item.get("reference_number") for item in document_metadata_service.list_all_metadata()]
-    assert numbers.count(reference) == 1  # never a number that is already used
+    assert numbers.count(reference) == 1  # Never a number that is already used
 
 
 def test_next_reference_number_counts_per_year():

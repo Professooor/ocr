@@ -150,7 +150,7 @@ def write_stored(document_id, store):
     storage_service.write_json_atomic(invoice_data_path(document_id), store)
 
 
-# Records
+# Invoice records
 def values_from_extraction(extraction):
     """Take only the field values out of an extraction result (the starting values the user can correct)."""
     return {key: extraction["fields"][key]["value"] for key in FIELD_KEYS}
@@ -214,7 +214,7 @@ def load_store(document_id):
             "status", "values", "line_items", "extracted", "extracted_line_items",
             "date_order", "extracted_at", "saved_at",
         )}
-        record["pages"] = None  # Not known: takes the pages found for page 1.
+        record["pages"] = None  # Old files do not store pages: use the pages found for page 1.
         store["invoices"]["1"] = record
     return store
 
@@ -419,7 +419,6 @@ def refuse_if_posted(record, action):
         )
 
 
-# Public functions
 def get_invoice_data(document_id, page=None):
     """The invoice that contains the page (default: page 1), extracted from the OCR text when needed."""
     with _lock:
@@ -441,7 +440,7 @@ def re_extract_invoice_data(document_id, page=None):
         refuse_if_posted(record, "read again")
         if record is None or not record.get("ocr_ready"):
             raise ServiceError("OCR results are not available yet. Run OCR first.", 409, "OCR_NOT_READY")
-        # Without a saved status the invoice no longer holds its pages, and its values are read again.
+        # Mark it as not saved, so refresh_invoices() reads its pages and values again.
         record["status"] = "needs_review"
         store = refresh_invoices(document_id, metadata, store, compute_ocr_signature(document_id))
         write_stored(document_id, store)
@@ -480,7 +479,7 @@ def set_page_break(document_id, payload):
         return build_response(document_id, store, page_number)
 
 
-# Validation
+# Checking and saving the user's changes
 def text_of(value):
     """Convert a value to trimmed text. None becomes ""."""
     return "" if value is None else str(value).strip()

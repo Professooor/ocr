@@ -5,13 +5,13 @@ Memory safety:
 - Pages are rendered one at a time; each page image is saved and released
   before the next page is rendered.
 - Before rendering, the pixel size of the page at the selected DPI is checked
-  against MAX_PAGE_PIXELS, so a very large page cannot exhaust memory.
+  against MAX_PAGE_PIXELS, so a very large page cannot use up all the memory.
 
 Re-use rules:
 - If the document was already converted with the same DPI and every page image
   still exists, the existing images are reused.
-- If the DPI changes, new images are rendered into a staging folder and only
-  replace the old images after every page succeeded. OCR results belong to the
+- If the DPI changes, new images are first saved in a temporary "staging" folder
+  and only replace the old images after every page succeeded. OCR results belong to the
   old images, so they are removed at the same time.
 """
 
@@ -126,11 +126,11 @@ def render_into_staging(document_id, pdf_path, staging_dir, dpi):
 
 
 def replace_pages(document_id, staging_dir, pages, dpi, duration):
-    """Swap the staged images in for the old ones and reset OCR. Updates the metadata under its lock."""
+    """Replace the old page images with the new ones and clear the old OCR results. document.json is locked meanwhile."""
 
     def apply_conversion(data):
-        # Runs under the metadata lock, so OCR cannot be queued while the
-        # page folders are swapped, and two conversions cannot swap at once.
+        # document.json is locked while this runs, so OCR cannot start while the page
+        # folders are being replaced, and two conversions cannot replace them at once.
         if data.get("ocr", {}).get("status") in ("queued", "running"):
             raise ServiceError(
                 "OCR started for this document during conversion. Try again when it finishes.",

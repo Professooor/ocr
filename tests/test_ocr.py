@@ -167,9 +167,7 @@ def test_interrupted_job_is_recovered_at_startup(client):
     assert "Run OCR again" in status["error"]
 
 
-# ---------------------------------------------------------------------------
 # Detail pass: pages that were not read completely are read again from a sharper image
-# ---------------------------------------------------------------------------
 class SharperEngine:
     """Reads 2 lines from a normal page image and sharp_lines from the higher-resolution one."""
 
@@ -212,7 +210,7 @@ def test_unclear_page_is_read_again_from_a_sharper_image(client, monkeypatch):
     assert page_result(client, document_id, 1)["line_count"] == 2
     assert page_result(client, document_id, 2)["line_count"] == 5
     assert any(call.endswith("detail_page_0002.png") for call in engine.calls)
-    assert not list(storage_service.get_pages_dir(document_id).glob("detail_*"))  # no temporary image left
+    assert not list(storage_service.get_pages_dir(document_id).glob("detail_*"))  # No temporary image left
     assert client.get(f"/api/documents/{document_id}/ocr/status").json()["data"]["status"] == "completed"
 
 
@@ -237,7 +235,7 @@ def test_detail_pass_for_a_document_read_before(client, monkeypatch):
     assert review_pages(client, document_id)[0]["dpi"] == 50
 
     monkeypatch.setattr(ocr_processing_service, "_detail_check", lambda doc, result: True)
-    monkeypatch.setattr(config, "OCR_DETAIL_DPI", 0)  # turned off
+    monkeypatch.setattr(config, "OCR_DETAIL_DPI", 0)  # Turned off
     off = client.post(f"/api/documents/{document_id}/ocr/detail").json()
     assert off["data"]["detail_pages"] == [] and off["message"] == "No page needs to be read again."
 

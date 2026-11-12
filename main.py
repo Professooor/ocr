@@ -44,7 +44,7 @@ from app.services import (
 setup_logging()
 logger = logging.getLogger("main")
 
-# Keep the OCR layer generic: the invoice rules choose which pages are read again at OCR_DETAIL_DPI.
+# The invoice rules decide which pages OCR should read again at a higher DPI.
 ocr_processing_service.set_detail_check(
     lambda document_id, page_result: invoice_extraction_service.needs_more_detail(page_result)
 )
@@ -97,5 +97,5 @@ for api_module in (
 if __name__ == "__main__":
     import uvicorn
 
-    # One worker: OCR jobs, the OCR model and the metadata lock live in this process.
+    # Use only one worker: the OCR queue, the OCR model and the file lock work inside one process only.
     uvicorn.run("main:app", host=config.APP_HOST, port=config.APP_PORT, workers=1)

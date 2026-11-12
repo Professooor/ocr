@@ -20,9 +20,7 @@ def make_page(entries, width=1240, height=1755):
     }
 
 
-# ---------------------------------------------------------------------------
 # Dates
-# ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "text,order,expected,ambiguous",
     [
@@ -31,7 +29,7 @@ def make_page(entries, width=1240, height=1755):
         ("10/15/2023", "dmy", "2023-10-15", False),   # 15 cannot be a month
         ("03/04/2025", "dmy", "2025-04-03", True),
         ("03/04/2025", "mdy", "2025-03-04", True),
-        ("05/05/2025", "dmy", "2025-05-05", False),   # same either way
+        ("05/05/2025", "dmy", "2025-05-05", False),   # Same either way
         ("15 October 2023", "dmy", "2023-10-15", False),
         ("1st Oct 2023", "dmy", "2023-10-01", False),
         ("Oct 15, 2023", "dmy", "2023-10-15", False),
@@ -57,9 +55,7 @@ def test_date_order_is_learned_from_the_document():
     assert extraction.detect_date_order(["nothing"]) in ("dmy", "mdy")
 
 
-# ---------------------------------------------------------------------------
 # Amounts
-# ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "text,expected",
     [
@@ -67,11 +63,11 @@ def test_date_order_is_learned_from_the_document():
         ("Total: 1.234,56 EUR", ["1234.56"]),
         ("USD 12,50", ["12.50"]),
         ("Rs. 1,25,000", ["125000"]),
-        ("Tax (10%): $82.00", ["82.00"]),          # the percentage is not an amount
+        ("Tax (10%): $82.00", ["82.00"]),          # The percentage is not an amount
         ("-$179.84", ["-179.84"]),
         ("Services 50.00 10 500.00", ["50.00", "10", "500.00"]),
-        ("Invoice IVN-10012", []),                 # codes are not amounts
-        ("Due 26/03/2021 total 40", ["40"]),       # dates are not amounts
+        ("Invoice IVN-10012", []),                 # Codes are not amounts
+        ("Due 26/03/2021 total 40", ["40"]),       # Dates are not amounts
     ],
 )
 def test_find_amounts(text, expected):
@@ -95,7 +91,7 @@ def test_amount_formatting():
         (["Total £50.00"], "GBP"),
         (["Amount due PKR 5,000"], "PKR"),
         (["Rs. 5,000"], "PKR"),
-        (["Total CAD 40 $"], "CAD"),   # an explicit code beats the dollar sign
+        (["Total CAD 40 $"], "CAD"),   # An explicit code beats the dollar sign
         (["Total 50"], ""),
     ],
 )
@@ -103,9 +99,7 @@ def test_detect_currency(texts, expected):
     assert extraction.detect_currency(texts) == expected
 
 
-# ---------------------------------------------------------------------------
 # Fields
-# ---------------------------------------------------------------------------
 def test_value_on_the_same_line_as_the_label():
     page = make_page([
         ("Invoice Number: INV-2024-77", (100, 100, 500, 125)),
@@ -227,9 +221,7 @@ def test_labeled_vendor():
     assert extraction.extract_invoice_data([page])["fields"]["vendor_name"]["value"] == "Delta Office Furniture Co"
 
 
-# ---------------------------------------------------------------------------
 # Line items
-# ---------------------------------------------------------------------------
 TABLE_HEADER = [
     ("DESCRIPTION", (80, 600, 230, 620)),
     ("RATE", (700, 600, 760, 620)),
@@ -279,9 +271,7 @@ def test_parse_value_kinds():
     assert extraction.parse_value("date", "no date", "dmy") is None
 
 
-# ---------------------------------------------------------------------------
 # Splitting a document into invoices
-# ---------------------------------------------------------------------------
 def signals(number="", own_data=False, marker=None):
     return {"invoice_number": number, "has_own_data": own_data, "page_marker": marker}
 
@@ -289,10 +279,10 @@ def signals(number="", own_data=False, marker=None):
 def test_split_into_invoices_by_number_marker_and_own_data():
     pages = [
         (1, signals("INV1", True)),
-        (2, signals()),                      # terms page: belongs to INV1
+        (2, signals()),                      # Terms page: belongs to INV1
         (3, signals("INV2", True)),
-        (4, signals("INV2")),                # same number printed again
-        (5, signals(own_data=True)),         # no number read, but its own date/total
+        (4, signals("INV2")),                # Same number printed again
+        (5, signals(own_data=True)),         # No number read, but its own date/total
         (6, signals("INV9", True, marker=2)),  # "Page 2 of 2" wins over the number
         (7, signals("INV2", marker=1)),      # "Page 1" starts a new invoice even with a known number
     ]
@@ -319,9 +309,7 @@ def test_page_signals_read_the_page_marker(text, marker):
     assert result["invoice_number"] == "INV0012"
 
 
-# ---------------------------------------------------------------------------
 # Patterns seen on scanned Pakistani sales tax invoices
-# ---------------------------------------------------------------------------
 @pytest.mark.parametrize(
     "token,expected",
     [("89.747.84", "89747.84"), ("334,554,00", "334554.00"), ("1.234.567", "1234567"), ("1,372,881", "1372881")],
@@ -347,7 +335,7 @@ def test_totals_row_uses_subtotal_plus_tax_not_the_quantity():
     fields = extraction.extract_invoice_data([page])["fields"]
     assert (fields["subtotal"]["value"], fields["tax"]["value"], fields["total_due"]["value"]) == (
         "31200.00", "5616.00", "36816.00")
-    assert fields["vendor_name"]["value"] == "A.R ENTERPRISES"  # not the "Sales Tax Invoice" title
+    assert fields["vendor_name"]["value"] == "A.R ENTERPRISES"  # Not the "Sales Tax Invoice" title
     assert fields["currency"]["value"] == "PKR"
 
 
@@ -439,9 +427,7 @@ def test_supporting_documents_belong_to_the_invoice_before_them():
     assert extraction.page_signals(invoice)["attachment"] is False
 
 
-# ---------------------------------------------------------------------------
 # Line items on scanned sales tax invoices: quantity x rate = amount
-# ---------------------------------------------------------------------------
 STN_HEADER = [
     ("Sr.No", (71, 209, 98, 224)), ("DESCRIPTION", (158, 213, 215, 223)), ("QTY", (282, 211, 305, 228)),
     ("RATE", (329, 213, 358, 228)), ("AMOUNT Ed. GST", (372, 210, 427, 221)), ("Sale Tax 18%", (439, 214, 495, 230)),
@@ -488,9 +474,7 @@ def test_item_split_over_two_rows_and_unreadable_quantity():
     ]) == [("7 PLY CTN 12X10X17 INCH", "18", "161.00", "2898.00"), ("3 PLY SHEET 9X11.5 INCH", "130", "15.00", "1950.00")]
 
 
-# ---------------------------------------------------------------------------
 # Scans that are turned, tilted or continued
-# ---------------------------------------------------------------------------
 def test_a_page_scanned_on_its_side_is_turned_upright():
     # Landscape invoice scanned standing: text runs top to bottom, the page top is at the right edge.
     width, height = 638, 825
@@ -500,20 +484,20 @@ def test_a_page_scanned_on_its_side_is_turned_upright():
              ("19.00", 331, 466, 346, 494), ("13,661.00", 333, 620, 347, 660), ("Total Weight", 166, 379, 184, 481)]
     page = {"page_number": 1, "image_width": width, "image_height": height, "lines": [
         {"text": text, "confidence": 0.99, "box": [left, top, right, bottom]}
-        for text, left, top, right, bottom in words  # tall, narrow boxes
+        for text, left, top, right, bottom in words  # Tall, narrow boxes
     ]}
     lines = extraction.collect_lines([page])
     assert lines[0]["page_width"] == height and lines[0]["page_height"] == width
     by_text = {line["text"]: line for line in lines}
-    assert by_text["Quantity"]["t"] < by_text["719.000"]["t"]  # the header is above the item after turning
-    assert abs(by_text["719.000"]["yc"] - by_text["13,661.00"]["yc"]) < 10  # one row
+    assert by_text["Quantity"]["t"] < by_text["719.000"]["t"]  # The header is above the item after turning
+    assert abs(by_text["719.000"]["yc"] - by_text["13,661.00"]["yc"]) < 10  # One row
 
 
 def test_rows_of_a_tilted_scan_stay_together():
     entries = []
     for row, y in enumerate((360, 385, 410)):
         for column, x in enumerate((100, 200, 300, 400, 500)):
-            drift = -x * 0.02  # the scan rises 2 px every 100 px
+            drift = -x * 0.02  # The scan rises 2 px every 100 px
             entries.append((f"{row}{column}", (x - 20, y + drift - 5, x + 20, y + drift + 5)))
     page = make_page(entries, width=638, height=825)
     rows = extraction.group_rows(extraction.collect_lines([page]))
@@ -556,9 +540,7 @@ def test_pages_with_unreadable_invoice_details_need_more_detail():
     assert extraction.needs_more_detail(letter) is False
 
 
-# ---------------------------------------------------------------------------
 # Supplier and buyer details, references, tax columns (FBR sales tax invoices)
-# ---------------------------------------------------------------------------
 def fbr_sales_tax_invoice():
     """A Pakistani sales tax invoice: supplier block at the top, a purchaser block, a taxed item."""
     return make_page([

@@ -16,13 +16,12 @@ from app.errors import ServiceError
 
 logger = logging.getLogger(__name__)
 
-# Pillow raises DecompressionBombError above twice this value; we also check it ourselves.
+# Tell Pillow the largest image size we allow, to protect memory. validate_image() also checks it.
 Image.MAX_IMAGE_PIXELS = config.MAX_PAGE_PIXELS
 
 INTEGER_PATTERN = re.compile(r"^[0-9]+$")
 
 
-# DPI
 def validate_dpi(raw_value, allow_missing=True):
     """
     Return a valid integer DPI between PDF_DPI_MIN and PDF_DPI_MAX.
@@ -57,7 +56,6 @@ def validate_dpi(raw_value, allow_missing=True):
     return dpi
 
 
-# Page numbers
 def validate_page_number(raw_value, page_count):
     """Return the page number as an int. Raises an error if it is not a whole number, or if the document has fewer pages."""
     text = str(raw_value).strip()
@@ -73,7 +71,6 @@ def validate_page_number(raw_value, page_count):
     return page_number
 
 
-# Files
 def get_extension(filename):
     """Return the lowercase file extension including the dot (for example ".pdf"), or "" if there is none."""
     name = str(filename or "").replace("\\", "/").split("/")[-1]
@@ -142,8 +139,8 @@ def validate_file_content(path, extension):
 
 def validate_pdf(path):
     """Check that the PDF opens, has no password and has at least one page. Return the page count."""
-    # Open from memory: if MuPDF fails on a damaged file it must not keep a
-    # handle on the temporary file (Windows could not delete it otherwise).
+    # Read the file into memory first. If a damaged PDF makes PyMuPDF fail, the
+    # temporary file is not left locked, so Windows can still delete it.
     try:
         with open(path, "rb") as handle:
             document = fitz.open(stream=handle.read(), filetype="pdf")
@@ -158,7 +155,7 @@ def validate_pdf(path):
         page_count = document.page_count
         if page_count < 1:
             raise ServiceError("The PDF file has no pages.", 422, "EMPTY_PDF")
-        # Loading the first page catches many structurally broken files early.
+        # Opening the first page finds many broken files early.
         document.load_page(0)
         return page_count
     except ServiceError:
